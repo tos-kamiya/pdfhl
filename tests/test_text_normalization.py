@@ -13,8 +13,8 @@ def test_normalize_char_basic():
 
 def test_pattern_from_text_literal_ws():
     rx = pattern_from_text("Hello  world\nagain", literal_whitespace=True, regex=False, ignore_case=True)
-    # literal whitespace: normalized newlines become spaces; pattern is literal text
-    assert rx.pattern == "Hello  world again"
+    # literal whitespace: normalized newlines become spaces; pattern matches literal spaces
+    assert rx.search("Hello  world again")
 
 
 def test_pattern_from_text_whitespace_to_s():

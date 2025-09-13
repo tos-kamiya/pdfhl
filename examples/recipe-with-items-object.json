@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "text": "Experiment", "color": "green", "label": "Experiment" },
+    { "text": "Conclusion", "color": "violet", "opacity": 0.25 }
+  ]
+}
+
