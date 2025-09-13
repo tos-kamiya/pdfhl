@@ -1,0 +1,10 @@
+{file.pdf} is a PDF file containing an academic paper.
+By running the command `pdftopages FILE.pdf BASE`,
+you will extract the text of each page into separate Markdown files named "BASE-nnn.md".
+For more information, see the help output of `pdftopages --help`.
+Afterwards, for each page, identify the important sentences and highlight them
+using the `pdfhl` command.  Check the usage instructions with `pdfhl --help`.
+Use the following three highlight colors:
+* Blue - Sentences that describe the approach
+* Green - Sentences that describe the experiment
+* Red - Sentences that discuss threats to validity

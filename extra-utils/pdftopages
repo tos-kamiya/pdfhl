@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+import argparse
+import re
+import sys
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import List
+
+# Page boundary in Marker markdown, e.g., "{0}------------------------------------------------"
+MARKER_RE = re.compile(r'^\{(\d+)\}-+\s*$')
+
+# Set True if you prefer to keep image lines ("![...]").
+# Note: since we remove the temporary directory, image links will break unless you also copy images.
+KEEP_IMAGES = False
+
+
+def preflight_collision_check(base: Path) -> None:
+    """
+    Abort early if ANY file matching "<base>-NNN.md" (3 digits) already exists.
+    Example: base="./page" -> "./page-010.md" existing means base is not safe.
+    """
+    base_parent = base.parent if str(base.parent) != "" else Path(".")
+    base_name = base.name
+
+    # Find "<base>-*.md" broadly, then filter to exactly 3 digits.
+    pattern_paths = list(base_parent.glob(f"{base_name}-*.md"))
+    regex = re.compile(rf"^{re.escape(base_name)}-\d{{3}}\.md$")
+    conflicts = [p for p in pattern_paths if regex.match(p.name)]
+
+    if conflicts:
+        print("ERROR: Output base conflicts with existing files:", file=sys.stderr)
+        for p in sorted(conflicts):
+            print(f" - {p}", file=sys.stderr)
+        print("Choose another base or move/delete the existing files.", file=sys.stderr)
+        sys.exit(1)
+
+
+def run_marker(input_pdf: Path, workdir: Path) -> Path:
+    """
+    Run marker_single with --paginate_output into a temp output directory.
+    Returns the path to the generated single .md file.
+
+    Progress bar note:
+    We do NOT capture stdout/stderr so that marker_single can display its progress bar.
+    """
+    out_dir = workdir / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Do NOT capture stdout/stderr -> allows progress bar to render in the terminal.
+        subprocess.run(
+            [
+                "marker_single",
+                str(input_pdf),
+                "--output_dir", str(out_dir),
+                "--paginate_output",
+            ],
+            check=True,
+        )
+    except FileNotFoundError:
+        print(
+            "ERROR: 'marker_single' command not found. Install via 'pip install marker-pdf[full]'.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    except subprocess.CalledProcessError:
+        print("ERROR: marker_single failed. See above for details.", file=sys.stderr)
+        sys.exit(2)
+
+    # Marker usually creates: out/<stem>/<stem>.md
+    subdirs = [p for p in out_dir.iterdir() if p.is_dir()]
+    if len(subdirs) != 1:
+        print(f"ERROR: Unexpected output structure in: {out_dir}", file=sys.stderr)
+        for p in subdirs:
+            print(" -", p, file=sys.stderr)
+        sys.exit(2)
+
+    md_files = list(subdirs[0].glob("*.md"))
+    if len(md_files) != 1:
+        print(f"ERROR: Markdown file not found uniquely in: {subdirs[0]}", file=sys.stderr)
+        for p in md_files:
+            print(" -", p, file=sys.stderr)
+        sys.exit(2)
+
+    return md_files[0]
+
+
+def split_markdown_by_pages(md_path: Path) -> List[str]:
+    """
+    Read Marker markdown and split by page markers. Returns a list of page strings.
+    """
+    pages: List[str] = []
+    current: List[str] = []
+
+    with md_path.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if MARKER_RE.match(line):
+                if current:
+                    pages.append("".join(current).rstrip() + "\n")
+                    current = []
+                continue
+            if not KEEP_IMAGES and line.lstrip().startswith("!["):
+                # Drop image lines to avoid broken links after temp deletion.
+                continue
+            current.append(line)
+
+    if current:
+        pages.append("".join(current).rstrip() + "\n")
+
+    return pages
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description=(
+            "Convert a PDF to Markdown with Marker and split it into per-page files "
+            "named '<base>-NNN.md' (3-digit numbering). "
+            "Aborts if any conflicting files already exist. Uses a temp dir and removes it."
+        )
+    )
+    ap.add_argument("pdf", type=Path, help="Input PDF path")
+    ap.add_argument(
+        "base",
+        type=Path,
+        help="Output base name (e.g., ./page -> ./page-001.md, ./page-002.md, ...)",
+    )
+    ap.add_argument(
+        "--start",
+        type=int,
+        default=1,
+        help="Starting index for numbering (default: 1). Use 0 for zero-based.",
+    )
+    args = ap.parse_args()
+
+    input_pdf = args.pdf.resolve()
+    base: Path = args.base
+    start = args.start
+
+    if not input_pdf.exists():
+        print(f"ERROR: Input PDF not found: {input_pdf}", file=sys.stderr)
+        sys.exit(2)
+
+    # 0) Base-level collision check (e.g., any './page-XYZ.md' exists -> abort)
+    preflight_collision_check(base)
+
+    base_parent = base.parent if str(base.parent) != "" else Path(".")
+    base_parent.mkdir(parents=True, exist_ok=True)
+
+    # 1) Work in a temporary directory (auto-removed afterwards)
+    with tempfile.TemporaryDirectory(prefix="marker_tmp_") as tmpdir:
+        workdir = Path(tmpdir)
+
+        # 2) Run Marker (progress bar will show in terminal)
+        md_path = run_marker(input_pdf, workdir)
+
+        # 3) Split by page markers
+        pages = split_markdown_by_pages(md_path)
+        if not pages:
+            print(
+                "ERROR: No page markers detected. Marker output format may have changed.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+        # 4) Per-file collision check (belt-and-suspenders)
+        intended = [Path(f"{base}-{i:03d}.md") for i in range(start, start + len(pages))]
+        conflicts = [p for p in intended if p.exists()]
+        if conflicts:
+            print("ERROR: Output targets already exist:", file=sys.stderr)
+            for p in conflicts:
+                print(f" - {p}", file=sys.stderr)
+            print("Aborting without writing any files.", file=sys.stderr)
+            sys.exit(1)
+
+        # 5) Write files
+        for out_path, content in zip(intended, pages):
+            with out_path.open("w", encoding="utf-8") as wf:
+                wf.write(content)
+
+        print(f"OK: Wrote {len(pages)} page file(s).")
+
+
+if __name__ == "__main__":
+    main()
