@@ -1,0 +1,185 @@
+# pdfhl
+
+プログレッシブ（進歩的）で寛容なフレーズマッチングを行うPDFテキストハイライター。
+
+## 概要
+
+`pdfhl`はPDF内のフレーズを検索し、マッチした箇所をハイライトします。その検索機能は、PDF特有の癖やフォーマットの差異に対して堅牢です。
+
+- **プログレッシブフレーズマッチング**: 単語が改行や他のテキストによって区切られていてもフレーズを検出します。これは、単語のチャンク（例：3単語、次に2単語）をマッチさせ、それらを連結することで機能します。
+- **寛容な正規化**: リガチャ（合字）、文字幅（例：`ﬁ`→`f` + `i`）、ハイフン、引用符を正規化します。
+- **選択制御**: 文書内で最もコンパクト（最短）なマッチのみをハイライトするか、すべての可能なマッチをハイライトするかを選択できます。
+- **安全な設計**: 入力PDFを上書きすることはなく、常に新しいファイルに書き込みます。
+
+## インストール
+
+```bash
+pip install pdfhl
+```
+
+Python 3.10+ と [PyMuPDF](https://pypi.org/project/PyMuPDF/) が必要です（依存関係として自動的にインストールされます）。
+
+## クイックスタート
+
+単一のフレーズをハイライトします。デフォルトでは、大文字と小文字を区別せず、最短のマッチを検索します。
+
+```bash
+pdfhl input.pdf --text "Deep Learning" -o output.pdf
+```
+
+フレーズのすべての出現箇所をハイライトします：
+
+```bash
+pdfhl input.pdf --text "Deep Learning" --all-matches -o output.pdf
+```
+
+ハイライトのスタイルを設定し、ラベルを追加します：
+
+```bash
+pdfhl input.pdf --text "evaluation metrics" --color "#FFEE00" --opacity 0.2 --label "Metrics" -o out.pdf
+```
+
+JSONレシピを介して一度に複数のハイライトを適用します：
+
+```bash
+pdfhl input.pdf --recipe recipe.json -o out.pdf
+```
+
+詳細は `examples/` を参照してください：
+- `examples/simple-recipe-array.json`
+- `examples/recipe-with-items-object.json`
+
+## CLIリファレンス
+
+```
+pdfhl PDF [--text TEXT | --recipe JSON] [options]
+```
+
+**モード**
+- **単一アイテムモード**:
+  - `--text TEXT` または `--pattern TEXT` (`--text`のエイリアス)
+- **レシピモード**:
+  - `--recipe path/to/recipe.json`
+
+**共通オプション**
+- `--ignore-case` / `--case-sensitive`
+  - デフォルト：大文字と小文字を区別しません。
+- `--shortest` / `--all-matches`
+  - 選択を制御します。デフォルトは`--shortest`で、文書全体で最もスコアの高い（最もコンパクトな）単一のマッチを検索します。`--all-matches`は、見つかったすべての有効なマッチをハイライトします。
+- `--dry-run`
+  - 検索のみを行い、出力ファイルを書き込みません。
+- `-o, --output PATH`
+  - 出力PDFパス。デフォルトは `<input>.highlighted.pdf` です。
+- `--label STR`
+  - 注釈のタイトル/コンテンツラベル。
+- `--color VAL`
+  - 色を名前（`yellow|mint|violet|red|green|blue`）、16進数（`#RRGGBB`）、または`r,g,b`（各0..1）で指定します。
+- `--opacity FLOAT`
+  - ハイライトの不透明度（0..1）、デフォルトは `0.3` です。
+- `--report json`
+  - JSONレポートを標準出力に出力します。
+
+**出力ポリシー**
+- 入力PDFは変更されません。このツールは入力パスへの上書きを拒否します。異なる `-o/--output` を指定してください。
+
+**終了コード**
+- `0`: OK
+- `1`: 見つかりません（いずれかのレシピアイテムが0件のマッチだった場合）
+- `2`: (未使用)
+- `3`: エラー（オープン/セーブの失敗、無効なパス、上書き拒否など）
+
+## JSONレシピフォーマット (`--recipe`)
+
+トップレベルのアイテム配列、または `items: [...]` キーを持つオブジェクトを渡すことができます。すべての検索はプログレッシブマッチングアルゴリズムを使用します。
+
+**トップレベル配列の例：**
+```json
+[
+  {"text": "Introduction", "color": "mint"},
+  {"text": "Threats to Validity", "color": "red", "select_shortest": false}
+]
+```
+
+**`items` を持つオブジェクトの例：**
+```json
+{
+  "items": [
+    {"text": "Experiment", "color": "green", "label": "Experiment"},
+    {"text": "Conclusion", "color": "violet", "opacity": 0.25}
+  ]
+}
+```
+
+**アイテムごとのフィールド：**
+- `text` または `pattern` (string, 必須): 検索するフレーズ。
+- `ignore_case` (bool, デフォルト `true`): 大文字と小文字を区別しない検索を実行するかどうか。
+- `select_shortest` (bool, デフォルト `true`): `true`の場合、最良の単一マッチのみをハイライトします。`false`の場合、見つかったすべてのマッチをハイライトします（`--all-matches`と同等）。
+- `label` (string | null): 注釈ラベル。
+- `color` (string | null): 色名、16進数、または `r,g,b` の浮動小数点値。
+- `opacity` (float | null): ハイライトの不透明度（0..1）。設定されていない場合はCLIのデフォルト値が使用されます。
+- `progressive_kmax` (int, デフォルト `3`): (上級者向け) 検索チャンク内の最大単語数。
+- `progressive_max_gap_chars` (int, デフォルト `200`): (上級者向け) マッチしたチャンク間のギャップで許容される最大文字数。
+
+## JSONレポート (`--report json`)
+
+**単一アイテムモードの出力：**
+```json
+{
+  "input": "input.pdf",
+  "output": "output.pdf",
+  "matches": 1,
+  "exit_code": 0,
+  "dry_run": false,
+  "hits": [
+    {
+      "page_index": 0,
+      "page_number": 1,
+      "start": 123,
+      "end": 135,
+      "rects": [[x0, y0, x1, y1], ...]
+    }
+  ],
+  "context": {
+    "query": "...",
+    "ignore_case": true,
+    "selection": "shortest"
+  }
+}
+```
+
+**レシピモードの出力（集約）：**
+```json
+{
+  "input": "input.pdf",
+  "output": "output.pdf",
+  "items": [
+    {
+      "index": 0,
+      "query": "Introduction",
+      "matches": 1,
+      "hits": [
+        {"page_index": 0, "page_number": 1, "start": 10, "end": 22, "rects": [[...]]}
+      ],
+      "progressive_search": true,
+      "progressive_kmax": 3,
+      "progressive_max_gap_chars": 200,
+      "select_shortest": true
+    }
+  ]
+}
+```
+
+**注釈**
+- `page_index` は0ベース、 `page_number` は1ベースです。
+- `start`/`end` は、ページの正規化されたテキストストリームへのインデックスです。
+
+## 開発
+
+テストの実行：
+```bash
+pytest -q
+```
+
+## ライセンス
+
+`pdfhl` は [MIT](https://spdx.org/licenses/MIT.html) ライセンスの条件の下で配布されています。
