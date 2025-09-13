@@ -6,7 +6,7 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Sequence, Tuple, Any
 
 
 # Exit codes aligned with discussion spec
@@ -331,6 +331,183 @@ def process_file(
     return EXIT_OK if total == 1 else EXIT_MULTIPLE
 
 
+def _parse_color(value: str | Sequence[float]) -> Tuple[float, float, float]:
+    """Parse color from name, #RRGGBB, or r,g,b floats (0..1)."""
+    if isinstance(value, (list, tuple)) and len(value) == 3:
+        r, g, b = value
+        return (float(r), float(g), float(b))
+    if isinstance(value, str):
+        s = value.strip()
+        if s.startswith("#") and len(s) == 7:
+            try:
+                r = int(s[1:3], 16) / 255.0
+                g = int(s[3:5], 16) / 255.0
+                b = int(s[5:7], 16) / 255.0
+                return (r, g, b)
+            except Exception:
+                pass
+        if "," in s:
+            parts = [p.strip() for p in s.split(",")]
+            if len(parts) == 3:
+                try:
+                    return (float(parts[0]), float(parts[1]), float(parts[2]))
+                except Exception:
+                    pass
+        return _color_to_rgb(s)
+    return _color_to_rgb("yellow")
+
+
+def _find_matches_by_page(doc, rx: re.Pattern[str]) -> Tuple[int, dict[int, List[Tuple[int, int]]]]:
+    total = 0
+    by_page: dict[int, List[Tuple[int, int]]] = {}
+    for pi, page in enumerate(doc):
+        norm_text, _ = _build_page_text_and_map(page)
+        for m in rx.finditer(norm_text):
+            total += 1
+            by_page.setdefault(pi, []).append((m.start(), m.end()))
+    return total, by_page
+
+
+def process_recipe(
+    pdf_path: Path,
+    out_path: Path | None,
+    recipe_items: Sequence[dict[str, Any]],
+    *,
+    default_allow_multiple: bool,
+    dry_run: bool,
+    default_label: str | None,
+    default_color_rgb: Tuple[float, float, float],
+    default_opacity: float,
+    report: bool,
+    inplace: bool = False,
+) -> int:
+    """Apply multiple highlights described in a JSON recipe in one pass."""
+    import fitz  # type: ignore
+
+    try:
+        doc = fitz.open(pdf_path.as_posix())
+    except Exception as e:  # pragma: no cover - I/O
+        print(f"[ERROR] failed to open PDF: {e}", file=sys.stderr)
+        return EXIT_ERROR
+
+    aggregate = {
+        "input": pdf_path.as_posix(),
+        "output": (pdf_path.as_posix() if inplace else (out_path or pdf_path.with_suffix(".highlighted.pdf")).as_posix()),
+        "items": [],
+    }
+
+    overall_not_found = False
+    overall_multiple_blocked = False
+
+    for idx, item in enumerate(recipe_items):
+        text = item.get("text") or item.get("pattern")
+        if not text:
+            print(f"[INFO] recipe item {idx}: missing 'text' field; skipping", file=sys.stderr)
+            aggregate["items"].append({"index": idx, "matches": 0, "skipped": True})
+            continue
+        regex = bool(item.get("regex", False))
+        ignore_case = bool(item.get("ignore_case", True))
+        literal_ws = bool(item.get("literal_whitespace", False))
+        allow_multiple = bool(item.get("allow_multiple", default_allow_multiple))
+        label = item.get("label", default_label)
+        color_val = item.get("color", None)
+        color_rgb = _parse_color(color_val) if color_val is not None else default_color_rgb
+        opacity = float(item.get("opacity", default_opacity))
+
+        rx = pattern_from_text(
+            str(text),
+            literal_whitespace=literal_ws,
+            regex=regex,
+            ignore_case=ignore_case,
+        )
+
+        total, by_page = _find_matches_by_page(doc, rx)
+
+        report_hits: List[dict] = []
+        if total > 0:
+            for pi, ranges in by_page.items():
+                page = doc[pi]
+                _, bbox_map = _build_page_text_and_map(page)
+                for s, e in ranges:
+                    rects = group_bboxes_to_line_rects(bbox_map[s:e])
+                    report_hits.append(
+                        {
+                            "page_index": pi,
+                            "page_number": pi + 1,
+                            "start": s,
+                            "end": e,
+                            "rects": [(x0, y0, x1, y1) for (x0, y0, x1, y1) in rects],
+                        }
+                    )
+
+        if total == 0:
+            overall_not_found = True
+            print(f"[INFO] recipe item {idx}: no matches found", file=sys.stderr)
+        elif total > 1 and not allow_multiple:
+            overall_multiple_blocked = True
+            print(f"[INFO] recipe item {idx}: multiple matches found ({total}). Use allow_multiple to highlight anyway.", file=sys.stderr)
+        else:
+            # Apply highlights unless dry-run
+            if not dry_run:
+                for pi, ranges in by_page.items():
+                    page = doc[pi]
+                    _, bbox_map = _build_page_text_and_map(page)
+                    for s, e in ranges:
+                        _highlight_match(page, bbox_map, s, e, label=label, color_rgb=color_rgb, opacity=opacity)
+
+        aggregate["items"].append(
+            {
+                "index": idx,
+                "query": str(text),
+                "pattern": rx.pattern,
+                "regex": regex,
+                "ignore_case": ignore_case,
+                "literal_whitespace": literal_ws,
+                "matches": total,
+                "allow_multiple": allow_multiple,
+                "hits": report_hits,
+            }
+        )
+
+    # Emit report if requested
+    if report:
+        print(json.dumps(aggregate, ensure_ascii=False))
+
+    # Save if not dry_run
+    try:
+        if not dry_run:
+            if inplace:
+                # Overwrite the input using incremental save
+                doc.save(pdf_path.as_posix(), incremental=True)
+                print(f"[OK] saved (inplace incremental): {pdf_path}", file=sys.stderr)
+            else:
+                if out_path is None:
+                    out_path = pdf_path.with_suffix(".highlighted.pdf")
+                try:
+                    same_target = out_path.resolve() == pdf_path.resolve()
+                except Exception:
+                    same_target = out_path.as_posix() == pdf_path.as_posix()
+                if same_target:
+                    print(
+                        "[ERROR] refusing to overwrite input. Use --inplace to overwrite the input file, or specify a different -o/--output.",
+                        file=sys.stderr,
+                    )
+                    return EXIT_ERROR
+                doc.save(out_path.as_posix(), garbage=4, deflate=True)
+                print(f"[OK] saved: {out_path}", file=sys.stderr)
+    except Exception as e:  # pragma: no cover - I/O
+        print(f"[ERROR] failed to save PDF: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    finally:
+        doc.close()
+
+    if overall_not_found:
+        return EXIT_NOT_FOUND
+    if overall_multiple_blocked:
+        return EXIT_MULTIPLE
+    return EXIT_OK
+
+
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="pdfhl",
@@ -341,9 +518,11 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
         ),
     )
     p.add_argument("pdf", type=Path, help="Input PDF file path")
-    p.add_argument("--text", dest="text", type=str, default=None, help="Search text (literal). Use --regex for regex mode.")
-    p.add_argument("--pattern", dest="pattern", type=str, default=None, help="Alias of --text")
-    p.add_argument("--regex", action="store_true", help="Treat the text as a regular expression")
+    mode = p.add_mutually_exclusive_group(required=False)
+    mode.add_argument("--text", dest="text", type=str, default=None, help="Search text (literal). Use --regex for regex mode.")
+    mode.add_argument("--pattern", dest="pattern", type=str, default=None, help="Alias of --text")
+    mode.add_argument("--recipe", type=Path, help="JSON recipe path for multiple highlights (list of items)")
+    p.add_argument("--regex", action="store_true", help="Treat the text as a regular expression (single-item mode)")
 
     case = p.add_mutually_exclusive_group()
     case.add_argument("--ignore-case", dest="ignore_case", action="store_true", default=True, help="Case-insensitive search (default)")
@@ -364,7 +543,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
     # Minimal color/label controls (RGB 0..1)
     p.add_argument("--label", type=str, default=None, help="Annotation title/content label")
-    p.add_argument("--color", type=str, default="yellow", help="Highlight color name: yellow|mint|violet|red|green|blue")
+    p.add_argument("--color", type=str, default="yellow", help="Highlight color: name|#RRGGBB|r,g,b (0..1)")
     p.add_argument("--opacity", type=float, default=0.3, help="Highlight opacity (0..1)")
     p.add_argument("--report", choices=["json"], help="Emit report to stdout (json)")
     return p.parse_args(argv)
@@ -385,9 +564,37 @@ def _color_to_rgb(name: str) -> Tuple[float, float, float]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     ns = _parse_args(sys.argv[1:] if argv is None else argv)
+    # Recipe mode
+    if getattr(ns, "recipe", None):
+        try:
+            data = json.loads(Path(ns.recipe).read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"[ERROR] failed to read recipe: {e}", file=sys.stderr)
+            return EXIT_ERROR
+        if isinstance(data, dict) and "items" in data:
+            items = data.get("items")
+        else:
+            items = data
+        if not isinstance(items, list):
+            print("[ERROR] recipe must be a list of items or an object with 'items' array", file=sys.stderr)
+            return EXIT_ERROR
+        return process_recipe(
+            ns.pdf,
+            ns.output,
+            items,  # type: ignore[arg-type]
+            default_allow_multiple=ns.allow_multiple,
+            dry_run=ns.dry_run,
+            default_label=ns.label,
+            default_color_rgb=_parse_color(ns.color),
+            default_opacity=float(ns.opacity),
+            report=(ns.report == "json"),
+            inplace=bool(getattr(ns, "inplace", False)),
+        )
+
+    # Single-item mode
     query = ns.text or ns.pattern
     if not query:
-        print("[ERROR] --text or --pattern is required.", file=sys.stderr)
+        print("[ERROR] --text/--pattern or --recipe is required.", file=sys.stderr)
         return EXIT_ERROR
 
     ignore_case = not getattr(ns, "case_sensitive", False)
@@ -405,7 +612,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         allow_multiple=ns.allow_multiple,
         dry_run=ns.dry_run,
         label=ns.label,
-        color_rgb=_color_to_rgb(ns.color),
+        color_rgb=_parse_color(ns.color),
         opacity=float(ns.opacity),
         report=(ns.report == "json"),
         report_context={
