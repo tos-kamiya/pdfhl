@@ -156,131 +156,80 @@ def pattern_from_text(
     return re.compile(patt, flags)
 
 
-def find_sequences_in_text(
+def find_progressive_phrase_segments(
     text: str,
-    patterns: Sequence[re.Pattern[str]],
+    query: str,
     *,
-    max_gap_chars: int = 200,
+    kmax: int = 3,
+    ignore_case: bool = True,
+    max_segment_gap_chars: int = 200,
+    min_total_words: int = 4,
 ) -> List[Tuple[int, int]]:
-    """Find ordered sequences of patterns appearing close together in text.
+    """Progressively find segments from a query with 3→2→1-word backoff.
 
-    Returns a list of (start, end) covering from the first part's start to the
-    last part's end for each sequence instance found.
-
-    Strategy:
-    - Precompute all matches for each part.
-    - Greedily chain matches in order, requiring start(next) - end(prev) <= max_gap_chars.
-    - Emit all chains found (could be multiple if overlaps exist).
+    - Normalizes the query like the page text (callers should normalize text).
+    - Between words in a chunk, allow "\s*" to match across newlines/missing spaces.
+    - Chains matches left-to-right; each next search starts from the previous end.
+    - After building segments, enforce proximity: each gap <= max_segment_gap_chars.
+    - Returns list of (start,end) for the accepted segments; empty if none or gaps too large.
     """
-    if not patterns:
-        return []
-    parts_matches: List[List[Tuple[int, int]]] = []
-    for rx in patterns:
-        parts_matches.append([(m.start(), m.end()) for m in rx.finditer(text)])
-    if any(len(lst) == 0 for lst in parts_matches):
-        return []
-
-    results: List[Tuple[int, int]] = []
-
-    def chain_from(idx_part: int, prev_end: int) -> List[Tuple[int, int]]:
-        out: List[Tuple[int, int]] = []
-        for s, e in parts_matches[idx_part]:
-            if s >= prev_end and (s - prev_end) <= max_gap_chars:
-                out.append((s, e))
-        return out
-
-    # For each occurrence of first part, try to build a full chain
-    for s0, e0 in parts_matches[0]:
-        chain = [(s0, e0)]
-        ok = True
-        prev_end = e0
-        for pi in range(1, len(parts_matches)):
-            cands = chain_from(pi, prev_end)
-            if not cands:
-                ok = False
-                break
-            # choose the earliest valid candidate to keep it simple; still emits multiple sequences by trying all s0
-            s, e = cands[0]
-            chain.append((s, e))
-            prev_end = e
-        if ok:
-            results.append((chain[0][0], chain[-1][1]))
-    return results
-
-
-def split_text_into_phrases(text: str, phrase_len: int = 3, *, start: int = 0) -> List[str]:
-    """Split a long query text into phrases of fixed word length after normalization.
-
-    - Normalizes like search does (NFKC, dash/quote unify, whitespace to single space).
-    - Returns non-overlapping groups of words joined by a single space.
-    """
-    norm = "".join(normalize_char(c) for c in text)
-    tokens = [t for t in re.split(r"\s+", norm.strip()) if t]
+    # Normalize query and split into tokens
+    norm_q = "".join(normalize_char(c) for c in query)
+    tokens = [t for t in re.split(r"\s+", norm_q.strip()) if t]
     if not tokens:
         return []
-    if phrase_len <= 1:
-        phrase_len = 1
-    phrases: List[str] = []
-    i = max(0, min(start, max(0, len(tokens) - 1)))
+    if kmax < 1:
+        kmax = 1
     n = len(tokens)
-    while i < n:
-        j = min(i + phrase_len, n)
-        phrases.append(" ".join(tokens[i:j]))
-        i = j
-    return phrases
+    flags = re.IGNORECASE if ignore_case else 0
 
+    def compile_chunk(i0: int, k: int) -> re.Pattern[str]:
+        chunk = tokens[i0:i0 + k]
+        patt = r"\s*".join(re.escape(tok) for tok in chunk)
+        return re.compile(patt, flags)
 
-def find_fuzzy_sequence_in_text(
-    text: str,
-    patterns: Sequence[re.Pattern[str]],
-    *,
-    max_gap_chars: int = 200,
-    min_ratio: float = 0.8,
-) -> List[Tuple[int, int]]:
-    """Find ordered, near-by subsequences meeting a minimum coverage ratio.
+    def build_chain(start_i: int, start_pos: int) -> List[Tuple[int, int, int]]:
+        segs: List[Tuple[int, int, int]] = []  # (s,e,k_used)
+        i = start_i
+        prev_end = start_pos
+        while i < n:
+            k = min(kmax, n - i)
+            matched_here = False
+            while k > 0:
+                rx = compile_chunk(i, k)
+                m = rx.search(text, pos=prev_end)
+                if m:
+                    segs.append((m.start(), m.end(), k))
+                    prev_end = m.end()
+                    i += k
+                    matched_here = True
+                    break
+                k -= 1
+            if not matched_here:
+                i += 1
+        return segs
 
-    - Builds a greedy chain across parts in order; parts may be skipped.
-    - Accepts if matched_parts / total_parts >= min_ratio.
-    - Returns at most one (start, end) range for simplicity.
-    """
-    if not patterns:
-        return []
-    parts_matches: List[List[Tuple[int, int]]] = []
-    for rx in patterns:
-        parts_matches.append([(m.start(), m.end()) for m in rx.finditer(text)])
-    total_parts = len(parts_matches)
+    def passes_chain(segs: List[Tuple[int, int, int]]) -> bool:
+        if not segs:
+            return False
+        # Proximity
+        for j in range(1, len(segs)):
+            if (segs[j][0] - segs[j - 1][1]) > max_segment_gap_chars:
+                return False
+        # Coverage: ensure enough words matched overall
+        total_words = sum(k for (_, _, k) in segs)
+        return total_words >= max(1, min_total_words)
 
-    # Find earliest starting match among all parts
-    start_candidates: List[Tuple[int, int, int]] = []  # (part_index, s, e)
-    for pi, lst in enumerate(parts_matches):
-        if lst:
-            s, e = lst[0]
-            start_candidates.append((pi, s, e))
-    if not start_candidates:
-        return []
-    # choose earliest by s
-    start_candidates.sort(key=lambda t: t[1])
-    start_part, s0, e0 = start_candidates[0]
-
-    matched = 1
-    first_s = s0
-    prev_e = e0
-    # chain subsequent parts after start_part
-    for pi in range(start_part + 1, total_parts):
-        # find earliest candidate satisfying order and gap
-        cand = None
-        for s, e in parts_matches[pi]:
-            if s >= prev_e and (s - prev_e) <= max_gap_chars:
-                cand = (s, e)
-                break
-        if cand is None:
-            continue  # skip this part
-        prev_e = cand[1]
-        matched += 1
-
-    ratio = matched / float(total_parts)
-    if ratio >= min_ratio:
-        return [(first_s, prev_e)]
+    # Try all candidates for the first chunk (k from kmax down to 1) and their occurrences
+    for k0 in range(min(kmax, n), 0, -1):
+        rx0 = compile_chunk(0, k0)
+        for m0 in rx0.finditer(text):
+            starter = (m0.start(), m0.end(), k0)
+            chain = build_chain(k0, m0.end())
+            segs = [starter] + chain
+            if passes_chain(segs):
+                # Drop k info when returning
+                return [(s, e) for (s, e, _) in segs]
     return []
 
 
@@ -504,44 +453,60 @@ def _find_matches_by_page(doc, rx: re.Pattern[str]) -> Tuple[int, dict[int, List
     return total, by_page
 
 
-def _find_sequence_matches_by_page(
+def _find_progressive_matches_by_page(
     doc,
-    part_patterns: Sequence[re.Pattern[str]],
+    query: str,
     *,
-    max_gap_chars: int,
+    kmax: int,
+    ignore_case: bool,
+    max_segment_gap_chars: int,
 ) -> Tuple[int, dict[int, List[Tuple[int, int]]]]:
+    """Run progressive phrase search per page and collect segments found.
+
+    Returns (total_segments, {page_index: [(s,e), ...]})
+    """
     total = 0
     by_page: dict[int, List[Tuple[int, int]]] = {}
     for pi, page in enumerate(doc):
         norm_text, _ = _build_page_text_and_map(page)
-        ranges = find_sequences_in_text(norm_text, part_patterns, max_gap_chars=max_gap_chars)
-        if ranges:
-            total += len(ranges)
-            by_page[pi] = ranges
-    return total, by_page
-
-
-def _find_fuzzy_sequence_matches_by_page(
-    doc,
-    part_patterns: Sequence[re.Pattern[str]],
-    *,
-    max_gap_chars: int,
-    min_ratio: float,
-) -> Tuple[int, dict[int, List[Tuple[int, int]]]]:
-    total = 0
-    by_page: dict[int, List[Tuple[int, int]]] = {}
-    for pi, page in enumerate(doc):
-        norm_text, _ = _build_page_text_and_map(page)
-        ranges = find_fuzzy_sequence_in_text(
+        segs = find_progressive_phrase_segments(
             norm_text,
-            part_patterns,
-            max_gap_chars=max_gap_chars,
-            min_ratio=min_ratio,
+            query,
+            kmax=kmax,
+            ignore_case=ignore_case,
+            max_segment_gap_chars=max_segment_gap_chars,
         )
-        if ranges:
-            total += len(ranges)
-            by_page[pi] = ranges
+        if segs:
+            # Collapse segments into a single covering range per page
+            s0, eN = segs[0][0], segs[-1][1]
+            total += 1
+            by_page[pi] = [(s0, eN)]
     return total, by_page
+
+
+def _collapse_to_shortest(by_page: dict[int, List[Tuple[int, int]]]) -> Tuple[int, dict[int, List[Tuple[int, int]]]]:
+    """Select the shortest (end-start) range across all pages and ranges.
+
+    Tie-breakers: lowest page index, then lowest start.
+    Returns (1, {best_page: [(s,e)]}) if any, otherwise (0, {}).
+    """
+    best: Tuple[int, int, int] | None = None  # (pi, s, e)
+    for pi, ranges in by_page.items():
+        for (s, e) in ranges:
+            if best is None:
+                best = (pi, s, e)
+                continue
+            bs, be = best[1], best[2]
+            cur_len = e - s
+            best_len = be - bs
+            if cur_len < best_len or (
+                cur_len == best_len and (pi < best[0] or (pi == best[0] and s < bs))
+            ):
+                best = (pi, s, e)
+    if best is None:
+        return 0, {}
+    pi, s, e = best
+    return 1, {pi: [(s, e)]}
 
 
 def process_recipe(
@@ -583,90 +548,43 @@ def process_recipe(
 
     for idx, item in enumerate(recipe_items):
         text = item.get("text") or item.get("pattern")
-        seq_parts = item.get("sequence")
-        if not text and not seq_parts:
-            print(f"[INFO] recipe item {idx}: missing 'text'/'pattern' or 'sequence' field; skipping", file=sys.stderr)
+        if not text:
+            print(f"[INFO] recipe item {idx}: missing 'text'/'pattern' field; skipping", file=sys.stderr)
             aggregate["items"].append({"index": idx, "matches": 0, "skipped": True})
             continue
-        regex = bool(item.get("regex", False))
+        # Progressive-only search: ignore regex/literal whitespace; do not block on multiples
+        regex = False
         ignore_case = bool(item.get("ignore_case", True))
-        literal_ws = bool(item.get("literal_whitespace", False))
-        allow_multiple = bool(item.get("allow_multiple", default_allow_multiple))
+        literal_ws = False
+        allow_multiple = True
         label = item.get("label", default_label)
         color_val = item.get("color", None)
         color_rgb = _parse_color(color_val) if color_val is not None else default_color_rgb
         opacity = float(item.get("opacity", default_opacity))
+        # Progressive search options (always used)
+        progressive_search = True
+        progressive_kmax = int(item.get("progressive_kmax", 3))
+        progressive_gap = int(item.get("progressive_max_gap_chars", 200))
+        select_shortest = bool(item.get("select_shortest", True))
 
-        is_sequence = isinstance(seq_parts, list) and len(seq_parts) > 0
-        if is_sequence:
-            try:
-                part_patterns = [
-                    pattern_from_text(
-                        str(p),
-                        literal_whitespace=literal_ws,
-                        regex=regex,
-                        ignore_case=ignore_case,
-                    )
-                    for p in seq_parts
-                ]
-            except Exception as e:
-                print(f"[ERROR] recipe item {idx}: invalid sequence parts: {e}", file=sys.stderr)
-                aggregate["items"].append({"index": idx, "matches": 0, "error": True})
-                continue
-            max_gap_chars = int(item.get("max_gap_chars", 200))
-            total, by_page = _find_sequence_matches_by_page(doc, part_patterns, max_gap_chars=max_gap_chars)
-        else:
-            rx = pattern_from_text(
-                str(text),
-                literal_whitespace=literal_ws,
-                regex=regex,
-                ignore_case=ignore_case,
-            )
-            total, by_page = _find_matches_by_page(doc, rx)
-            # Fallback: if no direct match and not regex, try auto phrase-split fuzzy sequence
-            auto_seq_used = False
-            auto_seq_params: dict[str, Any] | None = None
-            if total == 0 and not regex:
-                phrase_len = int(item.get("sequence_phrase_len", 3))
-                max_gap_chars = int(item.get("sequence_max_gap_chars", 300))
-                min_ratio = float(item.get("sequence_min_ratio", 0.75))
-                norm_q = "".join(normalize_char(c) for c in str(text))
-                word_count = len([t for t in re.split(r"\s+", norm_q.strip()) if t])
-                # Try multiple offsets for robustness
-                def try_phrase_len(pl: int) -> Tuple[int, dict[int, List[Tuple[int,int]]]]:
-                    for offset in range(max(1, pl)):
-                        parts = split_text_into_phrases(norm_q, phrase_len=pl, start=offset)
-                        part_patterns = [
-                            pattern_from_text(
-                                p,
-                                literal_whitespace=literal_ws,
-                                regex=False,
-                                ignore_case=ignore_case,
-                            )
-                            for p in parts
-                        ]
-                        t, bp = _find_fuzzy_sequence_matches_by_page(
-                            doc,
-                            part_patterns,
-                            max_gap_chars=max_gap_chars,
-                            min_ratio=min_ratio,
-                        )
-                        if t > 0:
-                            return t, bp
-                    return 0, {}
+        # Progressive search only
+        rx = None
+        total = 0
+        by_page: dict[int, List[Tuple[int, int]]] = {}
+        prog_used = True
+        t2, bp2 = _find_progressive_matches_by_page(
+            doc,
+            str(text),
+            kmax=progressive_kmax,
+            ignore_case=ignore_case,
+            max_segment_gap_chars=progressive_gap,
+        )
+        if t2 > 0:
+            total, by_page = t2, bp2
 
-                total, by_page = try_phrase_len(phrase_len)
-                # Fallback to phrase_len=2 if still no match and there are at least two words
-                if total == 0 and word_count >= 2:
-                    total, by_page = try_phrase_len(2)
-                auto_seq_used = total > 0
-                if auto_seq_used:
-                    auto_seq_params = {
-                        "auto_sequence": True,
-                        "sequence_phrase_len": phrase_len,
-                        "sequence_min_ratio": min_ratio,
-                        "sequence_max_gap_chars": max_gap_chars,
-                    }
+        # If multiple and selection is requested, collapse to the shortest
+        if total > 1 and select_shortest:
+            total, by_page = _collapse_to_shortest(by_page)
 
         report_hits: List[dict] = []
         if total > 0:
@@ -688,9 +606,6 @@ def process_recipe(
         if total == 0:
             overall_not_found = True
             print(f"[INFO] recipe item {idx}: no matches found", file=sys.stderr)
-        elif total > 1 and not allow_multiple:
-            overall_multiple_blocked = True
-            print(f"[INFO] recipe item {idx}: multiple matches found ({total}). Use allow_multiple to highlight anyway.", file=sys.stderr)
         else:
             # Apply highlights unless dry-run
             if not dry_run:
@@ -700,30 +615,27 @@ def process_recipe(
                     for s, e in ranges:
                         _highlight_match(page, bbox_map, s, e, label=label, color_rgb=color_rgb, opacity=opacity)
 
-        aggregate_item = (
-            {
-                "index": idx,
-                **(
-                    {
-                        "query": str(text),
-                        "pattern": (rx.pattern if (not is_sequence and 'rx' in locals()) else None),
-                    }
-                    if not is_sequence
-                    else {
-                        "sequence": [str(p) for p in seq_parts],
-                        "max_gap_chars": int(item.get("max_gap_chars", 200)),
-                    }
-                ),
-                "regex": regex,
-                "ignore_case": ignore_case,
-                "literal_whitespace": literal_ws,
-                "matches": total,
-                "allow_multiple": allow_multiple,
-                "hits": report_hits,
-            }
-        )
-        if not is_sequence and 'auto_seq_params' in locals() and auto_seq_params:
-            aggregate_item.update(auto_seq_params)
+        aggregate_item = {
+            "index": idx,
+            "query": str(text),
+            "pattern": (rx.pattern if rx is not None else None),
+            "regex": regex,
+            "ignore_case": ignore_case,
+            "literal_whitespace": literal_ws,
+            "matches": total,
+            "allow_multiple": True,
+            "hits": report_hits,
+        }
+        if prog_used:
+            aggregate_item.update(
+                {
+                    "progressive_search": True,
+                    "progressive_kmax": progressive_kmax,
+                    "progressive_max_gap_chars": progressive_gap,
+                }
+            )
+        if select_shortest:
+            aggregate_item["select_shortest"] = True
         aggregate["items"].append(aggregate_item)
 
     # Emit report if requested
@@ -732,8 +644,8 @@ def process_recipe(
         if compat_single_report and len(aggregate["items"]) == 1:
             it = aggregate["items"][0]
             m = it.get("matches", 0)
-            allow_multiple = bool(it.get("allow_multiple", default_allow_multiple))
-            exit_code_preview = EXIT_NOT_FOUND if m == 0 else (EXIT_OK if m == 1 else EXIT_MULTIPLE)
+            allow_multiple = True
+            exit_code_preview = EXIT_NOT_FOUND if m == 0 else EXIT_OK
             payload = {
                 "input": aggregate["input"],
                 "output": aggregate["output"],
@@ -795,7 +707,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
             "Example (array):\n"
             "  [\\n"
             "    {\"text\": \"Introduction\", \"color\": \"mint\"},\\n"
-            "    {\"text\": \"Threats\", \"color\": \"red\", \"allow_multiple\": true}\\n"
+            "    {\"text\": \"Threats\", \"color\": \"red\"}\\n"
             "  ]\n"
             "\n"
             "Example (object):\n"
@@ -807,31 +719,26 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
             "  }\n"
             "\n"
             "Per-item fields:\n"
-            "- text or pattern (string) OR sequence (list of strings)\n"
-            "- regex (bool, default false)\n"
+            "- text or pattern (string)\n"
             "- ignore_case (bool, default true)\n"
-            "- literal_whitespace (bool, default false)\n"
-            "- allow_multiple (bool, default falls back to CLI)\n"
+            "- select_shortest (bool, default true; false = highlight all matches)\n"
             "- label (string | null)\n"
             "- color (name|#RRGGBB|r,g,b 0..1)\n"
             "- opacity (float 0..1, default falls back to CLI)\n"
-            "- For sequence: max_gap_chars (int, default 200)\n"
             "\n"
-            "Optional fields for auto-splitting long 'text' when direct match fails:\n"
-            "- sequence_phrase_len (int, default 3)\n"
-            "- sequence_min_ratio (float, default 0.8)\n"
-            "- sequence_max_gap_chars (int, default 200)\n"
+            "Progressive search is always used (3→2→1-word backoff, allowing missing spaces with \\s*).\n"
+            "Advanced tuning: progressive_kmax (int, default 3), progressive_max_gap_chars (int, default 200)\n"
             "\n"
             "Exit Codes\n"
             "- 0: OK\n"
             "- 1: Not found (any item had zero matches)\n"
-            "- 2: Multiple matches (blocked; use --allow-multiple to permit highlighting)\n"
+            "- 2: (unused)\n"
             "- 3: Error (I/O failures, invalid paths, overwrite refusal, etc.)\n"
         ),
     )
     p.add_argument("pdf", type=Path, help="Input PDF file path")
     mode = p.add_mutually_exclusive_group(required=False)
-    mode.add_argument("--text", dest="text", type=str, default=None, help="Search text (literal). Use --regex for regex mode.")
+    mode.add_argument("--text", dest="text", type=str, default=None, help="Search text (progressive search)")
     mode.add_argument("--pattern", dest="pattern", type=str, default=None, help="Alias of --text")
     mode.add_argument(
         "--recipe",
@@ -841,14 +748,16 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
             "See 'JSON Recipe Format' in --help below."
         ),
     )
-    p.add_argument("--regex", action="store_true", help="Treat the text as a regular expression (single-item mode)")
+    # Progressive-only: no regex mode
 
     case = p.add_mutually_exclusive_group()
     case.add_argument("--ignore-case", dest="ignore_case", action="store_true", default=True, help="Case-insensitive search (default)")
     case.add_argument("--case-sensitive", dest="case_sensitive", action="store_true", help="Case-sensitive search")
 
-    p.add_argument("--literal-whitespace", action="store_true", help="Do not convert spaces to \\s+ (default converts for robust matching)")
-    p.add_argument("--allow-multiple", action="store_true", help="If multiple matches, still highlight and write output (exit 2)")
+    # Selection mode: shortest vs all (mutually exclusive; default shortest)
+    sel = p.add_mutually_exclusive_group()
+    sel.add_argument("--shortest", dest="shortest", action="store_true", help="Select the shortest matching range (default)")
+    sel.add_argument("--all-matches", dest="all_matches", action="store_true", help="Highlight all matching ranges")
     p.add_argument("--dry-run", action="store_true", help="Search only; do not write output")
 
     # Output policy: always write to a new file
@@ -895,7 +804,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ns.pdf,
             ns.output,
             items,  # type: ignore[arg-type]
-            default_allow_multiple=ns.allow_multiple,
+            default_allow_multiple=True,
             dry_run=ns.dry_run,
             default_label=ns.label,
             default_color_rgb=_parse_color(ns.color),
@@ -915,32 +824,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     items = [
         {
             "text": query,
-            "regex": bool(ns.regex),
             "ignore_case": not getattr(ns, "case_sensitive", False),
-            "literal_whitespace": bool(ns.literal_whitespace),
-            "allow_multiple": bool(ns.allow_multiple),
             "label": ns.label,
             "color": ns.color,
             "opacity": float(ns.opacity),
+            "select_shortest": (False if getattr(ns, "all_matches", False) else True),
         }
     ]
 
     # Also prepare context info similar to previous single-mode report
     ignore_case = not getattr(ns, "case_sensitive", False)
-    rx = pattern_from_text(query, literal_whitespace=ns.literal_whitespace, regex=ns.regex, ignore_case=ignore_case)
     context = {
         "query": query,
-        "pattern": rx.pattern,
-        "regex": bool(ns.regex),
         "ignore_case": ignore_case,
-        "literal_whitespace": bool(ns.literal_whitespace),
+        "selection": ("all" if getattr(ns, "all_matches", False) else "shortest"),
     }
 
     return process_recipe(
         ns.pdf,
         ns.output,
         items,
-        default_allow_multiple=ns.allow_multiple,
+        default_allow_multiple=True,
         dry_run=ns.dry_run,
         default_label=ns.label,
         default_color_rgb=_parse_color(ns.color),

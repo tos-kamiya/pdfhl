@@ -11,11 +11,8 @@ def test_single_text_defaults():
     assert ns.text == "Hello"
     assert ns.pattern is None
     assert getattr(ns, "recipe", None) is None
-    assert ns.regex is False
     # case handling: code uses not case_sensitive
     assert getattr(ns, "case_sensitive", False) is False
-    assert ns.literal_whitespace is False
-    assert ns.allow_multiple is False
     assert ns.output is None
     assert ns.label is None
     assert ns.color == "yellow"

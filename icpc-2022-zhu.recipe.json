@@ -1,0 +1,78 @@
+{
+  "items": [
+    {
+      "label": "Approach",
+      "color": "blue",
+      "allow_multiple": true,
+      "text": "we propose MSCCD (Multilingual Syntactic Code Clone Detector), a grammar pluggable code clone detection tool that uses a parser generator to generate a code block extractor for the target language. The extractor then extracts the semantic code blocks from a parse tree. MSCCD can detect Type-3 clones at various granularities."
+    },
+    {
+      "label": "Approach",
+      "color": "blue",
+      "allow_multiple": true,
+      "text": "every subtree in a parse tree (PT) presents a semantic code block"
+    },
+    {
+      "label": "Approach",
+      "color": "blue",
+      "allow_multiple": true,
+      "text": "MSCCD generates a code block extractor"
+    },
+    {
+      "label": "Approach",
+      "color": "blue",
+      "allow_multiple": true,
+      "text": "To detect clones, we adopted the definition and algorithm proposed by SourcererCC"
+    },
+
+    {
+      "label": "Experiment",
+      "color": "green",
+      "allow_multiple": true,
+      "text": "To evaluate the performance of MSCCD, we conducted experiments to answer the following research questions:"
+    },
+    {
+      "label": "Experiment",
+      "color": "green",
+      "allow_multiple": true,
+      "text": "We evaluated the most popular 21 languages according to the PYPL ranking."
+    },
+    {
+      "label": "Experiment",
+      "color": "green",
+      "allow_multiple": true,
+      "text": "For each language, we randomly selected five files with more than ten lines from the Rosetta Code."
+    },
+    {
+      "label": "Experiment",
+      "color": "green",
+      "allow_multiple": true,
+      "text": "We measured the recall of MSCCD by using Big-CloneEval"
+    },
+    {
+      "label": "Experiment",
+      "color": "green",
+      "allow_multiple": true,
+      "text": "We randomly selected 400 clone pairs"
+    },
+
+    {
+      "label": "Threats",
+      "color": "red",
+      "allow_multiple": true,
+      "text": "An external threat exists regarding the language extensibility of MSCCD."
+    },
+    {
+      "label": "Threats",
+      "color": "red",
+      "allow_multiple": true,
+      "text": "Users must confirm that the used grammar definition file is executable in ANTLRv4 and that it matches the version with the target files."
+    },
+    {
+      "label": "Threats",
+      "color": "red",
+      "allow_multiple": true,
+      "text": "One internal threat is that we did not report the precision of different languages."
+    }
+  ]
+}
