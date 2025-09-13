@@ -215,120 +215,34 @@ def process_file(
     report_context: dict | None = None,
     inplace: bool = False,
 ) -> int:
-    import fitz  # type: ignore
+    """Deprecated shim: route to process_recipe via a single-item recipe.
 
-    try:
-        doc = fitz.open(pdf_path.as_posix())
-    except Exception as e:  # pragma: no cover - I/O
-        print(f"[ERROR] failed to open PDF: {e}", file=sys.stderr)
-        return EXIT_ERROR
-
-    matches: List[Tuple[int, int, int]] = []
-    total = 0
-
-    # First pass: collect all matches across pages
-    for pi, page in enumerate(doc):
-        norm_text, bbox_map = _build_page_text_and_map(page)
-        for m in rx.finditer(norm_text):
-            total += 1
-            matches.append((pi, m.start(), m.end()))
-
-    # Prepare effective output path (even if we may not write) for reporting
-    effective_out = (pdf_path if inplace else (out_path or pdf_path.with_suffix(".highlighted.pdf")))
-
-    # Build report hits with rects (requires bbox maps), but avoid mutating PDF if dry_run
-    report_hits: List[dict] = []
-    if total > 0:
-        by_page: dict[int, List[Tuple[int, int]]] = {}
-        for pi, s, e in matches:
-            by_page.setdefault(pi, []).append((s, e))
-
-        for pi, ranges in by_page.items():
-            page = doc[pi]
-            norm_text, bbox_map = _build_page_text_and_map(page)
-            for s, e in ranges:
-                rects = group_bboxes_to_line_rects(bbox_map[s:e])
-                report_hits.append(
-                    {
-                        "page_index": pi,
-                        "page_number": pi + 1,
-                        "start": s,
-                        "end": e,
-                        "rects": [(x0, y0, x1, y1) for (x0, y0, x1, y1) in rects],
-                    }
-                )
-
-    # If requested, emit JSON report to stdout (do this before annotating / early returns)
-    exit_code_preview = (
-        EXIT_NOT_FOUND if total == 0 else EXIT_OK if total == 1 else EXIT_MULTIPLE
+    Kept temporarily for compatibility if imported elsewhere.
+    """
+    item = {
+        "text": report_context.get("query") if report_context and report_context.get("query") else rx.pattern,
+        "regex": True,  # rx is already a compiled regex
+        "ignore_case": bool(rx.flags & re.IGNORECASE),
+        "literal_whitespace": False,
+        "allow_multiple": bool(allow_multiple),
+        "label": label,
+        "color": color_rgb,
+        "opacity": float(opacity),
+    }
+    return process_recipe(
+        pdf_path,
+        out_path,
+        [item],
+        default_allow_multiple=allow_multiple,
+        dry_run=dry_run,
+        default_label=label,
+        default_color_rgb=color_rgb,
+        default_opacity=opacity,
+        report=report,
+        inplace=inplace,
+        report_context=report_context,
+        compat_single_report=True,
     )
-    if report:
-        payload = {
-            "input": pdf_path.as_posix(),
-            "output": effective_out.as_posix(),
-            "matches": total,
-            "exit_code": exit_code_preview,
-            "allow_multiple": allow_multiple,
-            "dry_run": dry_run,
-            "hits": report_hits,
-        }
-        if report_context:
-            payload["context"] = report_context
-        print(json.dumps(payload, ensure_ascii=False))
-
-    # Handle cardinality policy and dry-run early exits
-    if total == 0:
-        print("[INFO] no matches found", file=sys.stderr)
-        return EXIT_NOT_FOUND
-
-    if total > 1 and not allow_multiple:
-        print(f"[INFO] multiple matches found ({total}). Use --allow-multiple to highlight anyway.", file=sys.stderr)
-        return EXIT_MULTIPLE
-
-    if dry_run:
-        return EXIT_OK if total == 1 else EXIT_MULTIPLE
-
-    # Add highlights, page by page
-    by_page_apply: dict[int, List[Tuple[int, int]]] = {}
-    for pi, s, e in matches:
-        by_page_apply.setdefault(pi, []).append((s, e))
-
-    for pi, ranges in by_page_apply.items():
-        page = doc[pi]
-        norm_text, bbox_map = _build_page_text_and_map(page)
-        for s, e in ranges:
-            _highlight_match(page, bbox_map, s, e, label=label, color_rgb=color_rgb, opacity=opacity)
-
-    # Handle same-path overwrite policy
-    try:
-        # Determine final output path
-        if inplace:
-            # Overwrite the input using incremental save
-            doc.save(pdf_path.as_posix(), incremental=True)
-            print(f"[OK] saved (inplace incremental): {pdf_path}", file=sys.stderr)
-        else:
-            if out_path is None:
-                out_path = pdf_path.with_suffix(".highlighted.pdf")
-            # Refuse accidental overwrite of the input when not --inplace
-            try:
-                same_target = out_path.resolve() == pdf_path.resolve()
-            except Exception:
-                same_target = out_path.as_posix() == pdf_path.as_posix()
-            if same_target:
-                print(
-                    "[ERROR] refusing to overwrite input. Use --inplace to overwrite the input file, or specify a different -o/--output.",
-                    file=sys.stderr,
-                )
-                return EXIT_ERROR
-            doc.save(out_path.as_posix(), garbage=4, deflate=True)
-            print(f"[OK] saved: {out_path}", file=sys.stderr)
-    except Exception as e:  # pragma: no cover - I/O
-        print(f"[ERROR] failed to save PDF: {e}", file=sys.stderr)
-        return EXIT_ERROR
-    finally:
-        doc.close()
-
-    return EXIT_OK if total == 1 else EXIT_MULTIPLE
 
 
 def _parse_color(value: str | Sequence[float]) -> Tuple[float, float, float]:
