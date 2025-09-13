@@ -43,3 +43,12 @@ def test_mutually_exclusive_text_and_recipe():
         _parse_args(["in.pdf", "--text", "x", "--recipe", "foo.json"])
     assert ei.value.code == 2
 
+
+def test_help_shows_recipe_format(capsys):
+    with pytest.raises(SystemExit) as ei:
+        _parse_args(["-h"])
+    assert ei.value.code == 0
+    out = capsys.readouterr().out
+    assert "JSON Recipe Format" in out
+    # Show that examples/field hints appear
+    assert "items" in out

@@ -447,12 +447,49 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
             "Highlight a phrase in a PDF with tolerant matching (line breaks/ligatures). "
             "Always writes a new PDF; never modifies the input. Use -o/--output to choose the output path."
         ),
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog=(
+            "JSON Recipe Format (for --recipe)\n"
+            "\n"
+            "- Accepts either a top-level array or an object with an 'items' array.\n"
+            "\n"
+            "Example (array):\n"
+            "  [\\n"
+            "    {\"text\": \"Introduction\", \"color\": \"mint\"},\\n"
+            "    {\"text\": \"Threats\", \"color\": \"red\", \"allow_multiple\": true}\\n"
+            "  ]\n"
+            "\n"
+            "Example (object):\n"
+            "  {\\n"
+            "    \"items\": [\\n"
+            "      { \"text\": \"Experiment\", \"color\": \"green\", \"label\": \"Experiment\" },\\n"
+            "      { \"text\": \"Conclusion\", \"color\": \"violet\", \"opacity\": 0.25 }\\n"
+            "    ]\\n"
+            "  }\n"
+            "\n"
+            "Per-item fields:\n"
+            "- text or pattern (string, required)\n"
+            "- regex (bool, default false)\n"
+            "- ignore_case (bool, default true)\n"
+            "- literal_whitespace (bool, default false)\n"
+            "- allow_multiple (bool, default falls back to CLI)\n"
+            "- label (string | null)\n"
+            "- color (name|#RRGGBB|r,g,b 0..1)\n"
+            "- opacity (float 0..1, default falls back to CLI)\n"
+        ),
     )
     p.add_argument("pdf", type=Path, help="Input PDF file path")
     mode = p.add_mutually_exclusive_group(required=False)
     mode.add_argument("--text", dest="text", type=str, default=None, help="Search text (literal). Use --regex for regex mode.")
     mode.add_argument("--pattern", dest="pattern", type=str, default=None, help="Alias of --text")
-    mode.add_argument("--recipe", type=Path, help="JSON recipe path for multiple highlights (list of items)")
+    mode.add_argument(
+        "--recipe",
+        type=Path,
+        help=(
+            "JSON recipe path for multiple highlights (list of items).\n"
+            "See 'JSON Recipe Format' in --help below."
+        ),
+    )
     p.add_argument("--regex", action="store_true", help="Treat the text as a regular expression (single-item mode)")
 
     case = p.add_mutually_exclusive_group()
