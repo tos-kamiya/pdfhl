@@ -380,6 +380,8 @@ def process_recipe(
     default_opacity: float,
     report: bool,
     inplace: bool = False,
+    report_context: dict | None = None,
+    compat_single_report: bool = False,
 ) -> int:
     """Apply multiple highlights described in a JSON recipe in one pass."""
     import fitz  # type: ignore
@@ -390,11 +392,13 @@ def process_recipe(
         print(f"[ERROR] failed to open PDF: {e}", file=sys.stderr)
         return EXIT_ERROR
 
-    aggregate = {
+    aggregate: dict[str, Any] = {
         "input": pdf_path.as_posix(),
         "output": (pdf_path.as_posix() if inplace else (out_path or pdf_path.with_suffix(".highlighted.pdf")).as_posix()),
         "items": [],
     }
+    if report_context:
+        aggregate["context"] = report_context
 
     overall_not_found = False
     overall_multiple_blocked = False
@@ -471,7 +475,26 @@ def process_recipe(
 
     # Emit report if requested
     if report:
-        print(json.dumps(aggregate, ensure_ascii=False))
+        # If requested, emit a single-item compatible report format for CLI single mode
+        if compat_single_report and len(aggregate["items"]) == 1:
+            it = aggregate["items"][0]
+            m = it.get("matches", 0)
+            allow_multiple = bool(it.get("allow_multiple", default_allow_multiple))
+            exit_code_preview = EXIT_NOT_FOUND if m == 0 else (EXIT_OK if m == 1 else EXIT_MULTIPLE)
+            payload = {
+                "input": aggregate["input"],
+                "output": aggregate["output"],
+                "matches": m,
+                "exit_code": exit_code_preview,
+                "allow_multiple": allow_multiple,
+                "dry_run": bool(dry_run),
+                "hits": it.get("hits", []),
+            }
+            if report_context:
+                payload["context"] = report_context
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(json.dumps(aggregate, ensure_ascii=False))
 
     # Save if not dry_run
     try:
@@ -589,6 +612,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             default_opacity=float(ns.opacity),
             report=(ns.report == "json"),
             inplace=bool(getattr(ns, "inplace", False)),
+            report_context=None,
+            compat_single_report=False,
         )
 
     # Single-item mode
@@ -597,34 +622,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("[ERROR] --text/--pattern or --recipe is required.", file=sys.stderr)
         return EXIT_ERROR
 
-    ignore_case = not getattr(ns, "case_sensitive", False)
-    rx = pattern_from_text(
-        query,
-        literal_whitespace=ns.literal_whitespace,
-        regex=ns.regex,
-        ignore_case=ignore_case,
-    )
-
-    code = process_file(
-        ns.pdf,
-        ns.output,
-        rx,
-        allow_multiple=ns.allow_multiple,
-        dry_run=ns.dry_run,
-        label=ns.label,
-        color_rgb=_parse_color(ns.color),
-        opacity=float(ns.opacity),
-        report=(ns.report == "json"),
-        report_context={
-            "query": query,
-            "pattern": rx.pattern,
+    # Build a single-item recipe from CLI args and run through the common path
+    items = [
+        {
+            "text": query,
             "regex": bool(ns.regex),
             "ignore_case": not getattr(ns, "case_sensitive", False),
             "literal_whitespace": bool(ns.literal_whitespace),
-        },
+            "allow_multiple": bool(ns.allow_multiple),
+            "label": ns.label,
+            "color": ns.color,
+            "opacity": float(ns.opacity),
+        }
+    ]
+
+    # Also prepare context info similar to previous single-mode report
+    ignore_case = not getattr(ns, "case_sensitive", False)
+    rx = pattern_from_text(query, literal_whitespace=ns.literal_whitespace, regex=ns.regex, ignore_case=ignore_case)
+    context = {
+        "query": query,
+        "pattern": rx.pattern,
+        "regex": bool(ns.regex),
+        "ignore_case": ignore_case,
+        "literal_whitespace": bool(ns.literal_whitespace),
+    }
+
+    return process_recipe(
+        ns.pdf,
+        ns.output,
+        items,
+        default_allow_multiple=ns.allow_multiple,
+        dry_run=ns.dry_run,
+        default_label=ns.label,
+        default_color_rgb=_parse_color(ns.color),
+        default_opacity=float(ns.opacity),
+        report=(ns.report == "json"),
         inplace=bool(getattr(ns, "inplace", False)),
+        report_context=context,
+        compat_single_report=True,
     )
-    return code
 
 
 if __name__ == "__main__":  # pragma: no cover
