@@ -54,6 +54,58 @@ def normalize_char(c: str) -> str:
     return "".join(out)
 
 
+def _char_kind(c: str) -> str:
+    """Classify a character into a coarse kind for tokenization.
+
+    - 'W' for word-like (letters, numbers, marks)
+    - 'D' for delimiter (punctuation, symbols)
+    - 'O' for other (controls, separators other than space)
+    Whitespace is handled by the caller and generally skipped.
+    """
+    cat = unicodedata.category(c)
+    if not cat:
+        return 'O'
+    major = cat[0]
+    if major in ('L', 'N', 'M'):
+        return 'W'
+    if major in ('P', 'S'):
+        return 'D'
+    return 'O'
+
+
+def tokenize_query_by_kind(query: str) -> List[str]:
+    """Tokenize a query string by Unicode kind boundaries after normalization.
+
+    - Normalize via normalize_char
+    - Drop whitespace entirely
+    - Build contiguous runs of word-like kinds ('W')
+    - Treat delimiters ('D') as single-character tokens
+    - Ignore 'O' kinds (controls, non-spacing separators) unless part of a word
+    """
+    norm = "".join(normalize_char(c) for c in query)
+    tokens: List[str] = []
+    buf: List[str] = []
+    for ch in norm:
+        if ch.isspace():
+            if buf:
+                tokens.append("".join(buf))
+                buf.clear()
+            continue
+        kind = _char_kind(ch)
+        if kind == 'W':
+            buf.append(ch)
+            continue
+        if buf:
+            tokens.append("".join(buf))
+            buf.clear()
+        if kind == 'D':
+            tokens.append(ch)
+        # 'O' kinds are skipped
+    if buf:
+        tokens.append("".join(buf))
+    return [t for t in tokens if t]
+
+
 def _collapse_hyphen_linebreak(norm_chars: List[str], bbox_map: List[Rect] | None = None) -> Tuple[List[str], List[Rect] | None]:
     """Collapse hyphenation inserted at line breaks: "differ- ent" -> "different".
 
@@ -173,9 +225,8 @@ def find_progressive_phrase_segments(
     - After building segments, enforce proximity: each gap <= max_segment_gap_chars.
     - Returns list of (start,end) for the accepted segments; empty if none or gaps too large.
     """
-    # Normalize query and split into tokens
-    norm_q = "".join(normalize_char(c) for c in query)
-    tokens = [t for t in re.split(r"\s+", norm_q.strip()) if t]
+    # Tokenize by Unicode kind boundaries (spaces removed, delimiters as tokens)
+    tokens = tokenize_query_by_kind(query)
     if not tokens:
         return []
     if kmax < 1:
@@ -248,9 +299,8 @@ def find_progressive_candidates(
     A candidate passes if its segments obey the gap constraint and total matched
     words >= min_total_words.
     """
-    # Normalize query and split into tokens
-    norm_q = "".join(normalize_char(c) for c in query)
-    tokens = [t for t in re.split(r"\s+", norm_q.strip()) if t]
+    # Tokenize by Unicode kind boundaries (spaces removed, delimiters as tokens)
+    tokens = tokenize_query_by_kind(query)
     if not tokens:
         return []
     if kmax < 1:
@@ -569,9 +619,8 @@ def _find_progressive_matches_by_page(
                 d = segs[j][0] - segs[j - 1][1]
                 if d > 0:
                     gaps += d
-            # Query total words from tokens of query normalization
-            norm_q = "".join(normalize_char(c) for c in query)
-            total_tokens = len([t for t in re.split(r"\s+", norm_q.strip()) if t])
+            # Query total tokens from kind-based tokenization of the query
+            total_tokens = len(tokenize_query_by_kind(query))
             matched_words = sum(k for (_, _, k) in segs)
             word_cov = matched_words / max(1, total_tokens)
             char_cov = matched_chars / float(length)
