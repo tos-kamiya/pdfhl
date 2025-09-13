@@ -18,6 +18,20 @@
 - Commits: use Conventional Commits (e.g., `feat:`, `fix:`, `docs:`, `chore:`).
 - Pull requests: include a clear description and rationale; reference issues (e.g., `Closes #123`); add repro/validation steps and screenshots or short clips for UI changes; keep scope small and focused.
 
+### Commit Message Format
+- Subject: a single line using Conventional Commits (imperative, concise). Example:
+  - `feat: improve robust PDF text matching`
+- Body: optional, a few short lines separated by a blank line from the subject. Use bullets for specifics; wrap at ~72 chars.
+  - Example:
+    - `- Normalize dashes/quotes; collapse line-break hyphenation`
+    - `- Add auto phrase-split fallback (order, gap, ratio)`
+    - `- Add tests; help epilog`
+- Tips:
+  - No trailing period in the subject; keep it ≤ 50 chars when possible.
+  - Use present tense, active voice ("add", "fix", "update").
+  - Reference issues in the body (e.g., `Closes #123`).
+  - One logical change per commit; split unrelated changes.
+
 ## Session Logging (Raw‑ish Notes in `dev-notes/`)
 - Goal: Leave a human‑readable, raw‑ish session record under `dev-notes/session-YYYY-MM-DD.md` (not a full transcript, but close).
 - When starting work:
