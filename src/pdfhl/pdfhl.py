@@ -213,7 +213,6 @@ def process_file(
     opacity: float,
     report: bool,
     report_context: dict | None = None,
-    inplace: bool = False,
 ) -> int:
     """Deprecated shim: route to process_recipe via a single-item recipe.
 
@@ -239,7 +238,6 @@ def process_file(
         default_color_rgb=color_rgb,
         default_opacity=opacity,
         report=report,
-        inplace=inplace,
         report_context=report_context,
         compat_single_report=True,
     )
@@ -293,7 +291,6 @@ def process_recipe(
     default_color_rgb: Tuple[float, float, float],
     default_opacity: float,
     report: bool,
-    inplace: bool = False,
     report_context: dict | None = None,
     compat_single_report: bool = False,
 ) -> int:
@@ -306,9 +303,12 @@ def process_recipe(
         print(f"[ERROR] failed to open PDF: {e}", file=sys.stderr)
         return EXIT_ERROR
 
+    # Determine effective output path for reporting
+    effective_out = (out_path or pdf_path.with_suffix(".highlighted.pdf")).as_posix()
+
     aggregate: dict[str, Any] = {
         "input": pdf_path.as_posix(),
-        "output": (pdf_path.as_posix() if inplace else (out_path or pdf_path.with_suffix(".highlighted.pdf")).as_posix()),
+        "output": effective_out,
         "items": [],
     }
     if report_context:
@@ -413,25 +413,20 @@ def process_recipe(
     # Save if not dry_run
     try:
         if not dry_run:
-            if inplace:
-                # Overwrite the input using incremental save
-                doc.save(pdf_path.as_posix(), incremental=True)
-                print(f"[OK] saved (inplace incremental): {pdf_path}", file=sys.stderr)
-            else:
-                if out_path is None:
-                    out_path = pdf_path.with_suffix(".highlighted.pdf")
-                try:
-                    same_target = out_path.resolve() == pdf_path.resolve()
-                except Exception:
-                    same_target = out_path.as_posix() == pdf_path.as_posix()
-                if same_target:
-                    print(
-                        "[ERROR] refusing to overwrite input. Use --inplace to overwrite the input file, or specify a different -o/--output.",
-                        file=sys.stderr,
-                    )
-                    return EXIT_ERROR
-                doc.save(out_path.as_posix(), garbage=4, deflate=True)
-                print(f"[OK] saved: {out_path}", file=sys.stderr)
+            if out_path is None:
+                out_path = pdf_path.with_suffix(".highlighted.pdf")
+            try:
+                same_target = out_path.resolve() == pdf_path.resolve()
+            except Exception:
+                same_target = out_path.as_posix() == pdf_path.as_posix()
+            if same_target:
+                print(
+                    "[ERROR] refusing to overwrite input. Always write to a new file. Specify a different -o/--output.",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
+            doc.save(out_path.as_posix(), garbage=4, deflate=True)
+            print(f"[OK] saved: {out_path}", file=sys.stderr)
     except Exception as e:  # pragma: no cover - I/O
         print(f"[ERROR] failed to save PDF: {e}", file=sys.stderr)
         return EXIT_ERROR
@@ -450,8 +445,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
         prog="pdfhl",
         description=(
             "Highlight a phrase in a PDF with tolerant matching (line breaks/ligatures). "
-            "Default: never modifies the input PDF. Use -o/--output to write a new file. "
-            "To overwrite the input, pass --inplace (uses incremental save)."
+            "Always writes a new PDF; never modifies the input. Use -o/--output to choose the output path."
         ),
     )
     p.add_argument("pdf", type=Path, help="Input PDF file path")
@@ -469,14 +463,8 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     p.add_argument("--allow-multiple", action="store_true", help="If multiple matches, still highlight and write output (exit 2)")
     p.add_argument("--dry-run", action="store_true", help="Search only; do not write output")
 
-    # Output policy: either write to a new file, or overwrite input incrementally
-    out_group = p.add_mutually_exclusive_group()
-    out_group.add_argument("--output", "-o", type=Path, help="Output PDF path (default: <input>.highlighted.pdf)")
-    out_group.add_argument(
-        "--inplace",
-        action="store_true",
-        help="Overwrite the input PDF using incremental save (never the default)",
-    )
+    # Output policy: always write to a new file
+    p.add_argument("--output", "-o", type=Path, help="Output PDF path (default: <input>.highlighted.pdf)")
 
     # Minimal color/label controls (RGB 0..1)
     p.add_argument("--label", type=str, default=None, help="Annotation title/content label")
@@ -525,7 +513,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             default_color_rgb=_parse_color(ns.color),
             default_opacity=float(ns.opacity),
             report=(ns.report == "json"),
-            inplace=bool(getattr(ns, "inplace", False)),
             report_context=None,
             compat_single_report=False,
         )
@@ -571,7 +558,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         default_color_rgb=_parse_color(ns.color),
         default_opacity=float(ns.opacity),
         report=(ns.report == "json"),
-        inplace=bool(getattr(ns, "inplace", False)),
         report_context=context,
         compat_single_report=True,
     )
