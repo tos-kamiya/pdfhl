@@ -213,6 +213,7 @@ def process_file(
     opacity: float,
     report: bool,
     report_context: dict | None = None,
+    inplace: bool = False,
 ) -> int:
     import fitz  # type: ignore
 
@@ -233,7 +234,7 @@ def process_file(
             matches.append((pi, m.start(), m.end()))
 
     # Prepare effective output path (even if we may not write) for reporting
-    effective_out = out_path or pdf_path.with_suffix(".highlighted.pdf")
+    effective_out = (pdf_path if inplace else (out_path or pdf_path.with_suffix(".highlighted.pdf")))
 
     # Build report hits with rects (requires bbox maps), but avoid mutating PDF if dry_run
     report_hits: List[dict] = []
@@ -298,11 +299,29 @@ def process_file(
         for s, e in ranges:
             _highlight_match(page, bbox_map, s, e, label=label, color_rgb=color_rgb, opacity=opacity)
 
+    # Handle same-path overwrite policy
     try:
-        if out_path is None:
-            out_path = pdf_path.with_suffix(".highlighted.pdf")
-        doc.save(out_path.as_posix(), garbage=4, deflate=True)
-        print(f"[OK] saved: {out_path}", file=sys.stderr)
+        # Determine final output path
+        if inplace:
+            # Overwrite the input using incremental save
+            doc.save(pdf_path.as_posix(), incremental=True)
+            print(f"[OK] saved (inplace incremental): {pdf_path}", file=sys.stderr)
+        else:
+            if out_path is None:
+                out_path = pdf_path.with_suffix(".highlighted.pdf")
+            # Refuse accidental overwrite of the input when not --inplace
+            try:
+                same_target = out_path.resolve() == pdf_path.resolve()
+            except Exception:
+                same_target = out_path.as_posix() == pdf_path.as_posix()
+            if same_target:
+                print(
+                    "[ERROR] refusing to overwrite input. Use --inplace to overwrite the input file, or specify a different -o/--output.",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
+            doc.save(out_path.as_posix(), garbage=4, deflate=True)
+            print(f"[OK] saved: {out_path}", file=sys.stderr)
     except Exception as e:  # pragma: no cover - I/O
         print(f"[ERROR] failed to save PDF: {e}", file=sys.stderr)
         return EXIT_ERROR
@@ -315,7 +334,11 @@ def process_file(
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="pdfhl",
-        description="Highlight a phrase in a PDF with tolerant matching (line breaks/ligatures).",
+        description=(
+            "Highlight a phrase in a PDF with tolerant matching (line breaks/ligatures). "
+            "Default: never modifies the input PDF. Use -o/--output to write a new file. "
+            "To overwrite the input, pass --inplace (uses incremental save)."
+        ),
     )
     p.add_argument("pdf", type=Path, help="Input PDF file path")
     p.add_argument("--text", dest="text", type=str, default=None, help="Search text (literal). Use --regex for regex mode.")
@@ -329,7 +352,15 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     p.add_argument("--literal-whitespace", action="store_true", help="Do not convert spaces to \\s+ (default converts for robust matching)")
     p.add_argument("--allow-multiple", action="store_true", help="If multiple matches, still highlight and write output (exit 2)")
     p.add_argument("--dry-run", action="store_true", help="Search only; do not write output")
-    p.add_argument("--output", "-o", type=Path, help="Output PDF path (default: <input>.highlighted.pdf)")
+
+    # Output policy: either write to a new file, or overwrite input incrementally
+    out_group = p.add_mutually_exclusive_group()
+    out_group.add_argument("--output", "-o", type=Path, help="Output PDF path (default: <input>.highlighted.pdf)")
+    out_group.add_argument(
+        "--inplace",
+        action="store_true",
+        help="Overwrite the input PDF using incremental save (never the default)",
+    )
 
     # Minimal color/label controls (RGB 0..1)
     p.add_argument("--label", type=str, default=None, help="Annotation title/content label")
@@ -384,6 +415,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "ignore_case": not getattr(ns, "case_sensitive", False),
             "literal_whitespace": bool(ns.literal_whitespace),
         },
+        inplace=bool(getattr(ns, "inplace", False)),
     )
     return code
 
