@@ -476,6 +476,12 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
             "- label (string | null)\n"
             "- color (name|#RRGGBB|r,g,b 0..1)\n"
             "- opacity (float 0..1, default falls back to CLI)\n"
+            "\n"
+            "Exit Codes\n"
+            "- 0: OK\n"
+            "- 1: Not found (any item had zero matches)\n"
+            "- 2: Multiple matches (blocked; use --allow-multiple to permit highlighting)\n"
+            "- 3: Error (I/O failures, invalid paths, overwrite refusal, etc.)\n"
         ),
     )
     p.add_argument("pdf", type=Path, help="Input PDF file path")

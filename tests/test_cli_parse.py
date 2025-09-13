@@ -52,3 +52,6 @@ def test_help_shows_recipe_format(capsys):
     assert "JSON Recipe Format" in out
     # Show that examples/field hints appear
     assert "items" in out
+    # Exit codes should be documented as well
+    assert "Exit Codes" in out
+    assert "0: OK" in out
