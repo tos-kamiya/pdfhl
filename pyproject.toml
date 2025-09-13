@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdfhl"
+dynamic = ["version"]
+description = ''
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Toshihiro Kamiya", email = "kamiya@mbj.nifty.com" },
+]
+classifiers = [
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+  "pymupdf>=1.24.0",
+]
+
+[project.scripts]
+pdfhl = "pdfhl.pdfhl:main"
+
+[tool.hatch.version]
+path = "src/pdfhl/__about__.py"
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/pdfhl tests}"
+
+[tool.coverage.run]
+source_pkgs = ["pdfhl", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/pdfhl/__about__.py",
+]
+
+[tool.coverage.paths]
+pdfhl = ["src/pdfhl", "*/pdfhl/src/pdfhl"]
+tests = ["tests", "*/pdfhl/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
