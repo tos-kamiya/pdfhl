@@ -233,6 +233,80 @@ def find_progressive_phrase_segments(
     return []
 
 
+def find_progressive_candidates(
+    text: str,
+    query: str,
+    *,
+    kmax: int = 3,
+    ignore_case: bool = True,
+    max_segment_gap_chars: int = 200,
+    min_total_words: int = 4,
+) -> List[List[Tuple[int, int, int]]]:
+    """Return all passing progressive candidates as lists of segments (s,e,k).
+
+    Each candidate is a list of segments where each segment is (start, end, k_used).
+    A candidate passes if its segments obey the gap constraint and total matched
+    words >= min_total_words.
+    """
+    # Normalize query and split into tokens
+    norm_q = "".join(normalize_char(c) for c in query)
+    tokens = [t for t in re.split(r"\s+", norm_q.strip()) if t]
+    if not tokens:
+        return []
+    if kmax < 1:
+        kmax = 1
+    n = len(tokens)
+    flags = re.IGNORECASE if ignore_case else 0
+
+    def compile_chunk(i0: int, k: int) -> re.Pattern[str]:
+        chunk = tokens[i0:i0 + k]
+        patt = r"\s*".join(re.escape(tok) for tok in chunk)
+        return re.compile(patt, flags)
+
+    def build_chain(start_i: int, start_pos: int) -> List[Tuple[int, int, int]]:
+        segs: List[Tuple[int, int, int]] = []  # (s,e,k)
+        i = start_i
+        prev_end = start_pos
+        while i < n:
+            k = min(kmax, n - i)
+            matched_here = False
+            while k > 0:
+                rx = compile_chunk(i, k)
+                m = rx.search(text, pos=prev_end)
+                if m:
+                    segs.append((m.start(), m.end(), k))
+                    prev_end = m.end()
+                    i += k
+                    matched_here = True
+                    break
+                k -= 1
+            if not matched_here:
+                i += 1
+        return segs
+
+    def passes_chain(segs: List[Tuple[int, int, int]]) -> bool:
+        if not segs:
+            return False
+        # Proximity
+        for j in range(1, len(segs)):
+            if (segs[j][0] - segs[j - 1][1]) > max_segment_gap_chars:
+                return False
+        # Coverage: ensure enough words matched overall
+        total_words = sum(k for (_, _, k) in segs)
+        return total_words >= max(1, min_total_words)
+
+    cands: List[List[Tuple[int, int, int]]] = []
+    for k0 in range(min(kmax, n), 0, -1):
+        rx0 = compile_chunk(0, k0)
+        for m0 in rx0.finditer(text):
+            starter = (m0.start(), m0.end(), k0)
+            chain = build_chain(k0, m0.end())
+            segs = [starter] + chain
+            if passes_chain(segs):
+                cands.append(segs)
+    return cands
+
+
 def group_bboxes_to_line_rects(bboxes: Sequence[Rect], y_tol: float = 3.0) -> List[Rect]:
     """Group character bounding boxes into line rectangles.
 
@@ -460,27 +534,74 @@ def _find_progressive_matches_by_page(
     kmax: int,
     ignore_case: bool,
     max_segment_gap_chars: int,
+    select_shortest: bool,
 ) -> Tuple[int, dict[int, List[Tuple[int, int]]]]:
-    """Run progressive phrase search per page and collect segments found.
+    """Run progressive phrase search per page and select ranges.
 
-    Returns (total_segments, {page_index: [(s,e), ...]})
+    If select_shortest is True, choose the best-scoring single candidate per page.
+    Otherwise, return all candidate ranges per page.
     """
     total = 0
     by_page: dict[int, List[Tuple[int, int]]] = {}
+    # For global-best selection, track the overall best across pages
+    best_global: Tuple[float, int, int, int] | None = None  # (score, pi, s0, eN)
     for pi, page in enumerate(doc):
         norm_text, _ = _build_page_text_and_map(page)
-        segs = find_progressive_phrase_segments(
+        cands = find_progressive_candidates(
             norm_text,
             query,
             kmax=kmax,
             ignore_case=ignore_case,
             max_segment_gap_chars=max_segment_gap_chars,
         )
-        if segs:
-            # Collapse segments into a single covering range per page
+        if not cands:
+            continue
+
+        def score(segs: List[Tuple[int, int, int]]) -> float:
+            # Compute coverage and penalties
+            if not segs:
+                return -1e9
             s0, eN = segs[0][0], segs[-1][1]
-            total += 1
-            by_page[pi] = [(s0, eN)]
+            length = max(1, eN - s0)
+            matched_chars = sum(e - s for (s, e, _) in segs)
+            gaps = 0
+            for j in range(1, len(segs)):
+                d = segs[j][0] - segs[j - 1][1]
+                if d > 0:
+                    gaps += d
+            # Query total words from tokens of query normalization
+            norm_q = "".join(normalize_char(c) for c in query)
+            total_tokens = len([t for t in re.split(r"\s+", norm_q.strip()) if t])
+            matched_words = sum(k for (_, _, k) in segs)
+            word_cov = matched_words / max(1, total_tokens)
+            char_cov = matched_chars / float(length)
+            gap_pen = gaps / float(length)
+            length_pen = min(1.0, length / 800.0)  # gentle penalty up to ~800 chars
+            return (2.0 * word_cov) + (1.0 * char_cov) - (0.5 * gap_pen) - (0.25 * length_pen)
+
+        if select_shortest:
+            # Choose best by score across ALL pages; tie-break by shorter length, then earlier
+            for segs in cands:
+                sc = score(segs)
+                s0, eN = segs[0][0], segs[-1][1]
+                length = eN - s0
+                key = (sc, -length, -s0)
+                if best_global is None or key > (best_global[0], -(best_global[3]-best_global[2]), -best_global[2]):
+                    best_global = (sc, pi, s0, eN)
+        else:
+            # Return all ranges
+            ranges = []
+            for segs in cands:
+                s0, eN = segs[0][0], segs[-1][1]
+                ranges.append((s0, eN))
+            if ranges:
+                total += len(ranges)
+                by_page[pi] = ranges
+    if select_shortest:
+        if best_global is None:
+            return 0, {}
+        _, pi, s0, eN = best_global
+        return 1, {pi: [(s0, eN)]}
     return total, by_page
 
 
@@ -578,13 +699,12 @@ def process_recipe(
             kmax=progressive_kmax,
             ignore_case=ignore_case,
             max_segment_gap_chars=progressive_gap,
+            select_shortest=select_shortest,
         )
         if t2 > 0:
             total, by_page = t2, bp2
 
-        # If multiple and selection is requested, collapse to the shortest
-        if total > 1 and select_shortest:
-            total, by_page = _collapse_to_shortest(by_page)
+        # Selection to single best is handled inside _find_progressive_matches_by_page
 
         report_hits: List[dict] = []
         if total > 0:
