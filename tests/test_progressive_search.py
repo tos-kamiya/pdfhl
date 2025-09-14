@@ -1,4 +1,4 @@
-from pdfhl.pdfhl import find_progressive_phrase_segments, _collapse_to_shortest
+from pdfhl.pdfhl import find_progressive_phrase_segments
 
 
 def test_progressive_matches_across_missing_spaces():
@@ -31,13 +31,8 @@ def test_progressive_backoff_to_two_and_one_word():
         assert segs[i - 1][1] <= segs[i][0]
 
 
-def test_collapse_to_shortest_range():
-    by_page = {
-        0: [(10, 40), (100, 120)],  # lengths: 30, 20
-        1: [(5, 30)],  # length: 25
-    }
-    total, collapsed = _collapse_to_shortest(by_page)
-    assert total == 1
-    # Should pick (100,120) on page 0 (length 20)
-    assert list(collapsed.keys()) == [0]
-    assert collapsed[0] == [(100, 120)]
+def test_placeholder_progressive_sanity():
+    # Minimal sanity check to keep test module balance after removing
+    # _collapse_to_shortest helper. Ensure function returns empty on no tokens.
+    segs = find_progressive_phrase_segments("abc", "", kmax=3)
+    assert segs == []

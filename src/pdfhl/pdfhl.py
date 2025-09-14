@@ -242,7 +242,7 @@ def find_progressive_phrase_segments(
                 if not raw:
                     return []
                 merged: List[Tuple[int, int]] = [raw[0]]
-                for (s, e) in raw[1:]:
+                for s, e in raw[1:]:
                     ps, pe = merged[-1]
                     if s == pe:  # contiguous; coalesce
                         merged[-1] = (ps, e)
@@ -532,9 +532,6 @@ def _parse_color(value: str | Sequence[float]) -> Tuple[float, float, float]:
     return _color_to_rgb("yellow")
 
 
- 
-
-
 def _find_progressive_matches_by_page(
     doc,
     query: str,
@@ -610,29 +607,6 @@ def _find_progressive_matches_by_page(
         _, pi, s0, eN = best_global
         return 1, {pi: [(s0, eN)]}
     return total, by_page
-
-
-def _collapse_to_shortest(by_page: dict[int, List[Tuple[int, int]]]) -> Tuple[int, dict[int, List[Tuple[int, int]]]]:
-    """Select the shortest (end-start) range across all pages and ranges.
-
-    Tie-breakers: lowest page index, then lowest start.
-    Returns (1, {best_page: [(s,e)]}) if any, otherwise (0, {}).
-    """
-    best: Tuple[int, int, int] | None = None  # (pi, s, e)
-    for pi, ranges in by_page.items():
-        for s, e in ranges:
-            if best is None:
-                best = (pi, s, e)
-                continue
-            bs, be = best[1], best[2]
-            cur_len = e - s
-            best_len = be - bs
-            if cur_len < best_len or (cur_len == best_len and (pi < best[0] or (pi == best[0] and s < bs))):
-                best = (pi, s, e)
-    if best is None:
-        return 0, {}
-    pi, s, e = best
-    return 1, {pi: [(s, e)]}
 
 
 def process_recipe(
