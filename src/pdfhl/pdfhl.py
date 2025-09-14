@@ -58,56 +58,7 @@ def normalize_char(c: str) -> str:
     return "".join(out)
 
 
-def _char_kind(c: str) -> str:
-    """Classify a character into a coarse kind for tokenization.
-
-    - 'W' for word-like (letters, numbers, marks)
-    - 'D' for delimiter (punctuation, symbols)
-    - 'O' for other (controls, separators other than space)
-    Whitespace is handled by the caller and generally skipped.
-    """
-    cat = unicodedata.category(c)
-    if not cat:
-        return 'O'
-    major = cat[0]
-    if major in ('L', 'N', 'M'):
-        return 'W'
-    if major in ('P', 'S'):
-        return 'D'
-    return 'O'
-
-
-def tokenize_query_by_kind(query: str) -> List[str]:
-    """Tokenize a query string by Unicode kind boundaries after normalization.
-
-    - Normalize via normalize_char
-    - Drop whitespace entirely
-    - Build contiguous runs of word-like kinds ('W')
-    - Treat delimiters ('D') as single-character tokens
-    - Ignore 'O' kinds (controls, non-spacing separators) unless part of a word
-    """
-    norm = "".join(normalize_char(c) for c in query)
-    tokens: List[str] = []
-    buf: List[str] = []
-    for ch in norm:
-        if ch.isspace():
-            if buf:
-                tokens.append("".join(buf))
-                buf.clear()
-            continue
-        kind = _char_kind(ch)
-        if kind == 'W':
-            buf.append(ch)
-            continue
-        if buf:
-            tokens.append("".join(buf))
-            buf.clear()
-        if kind == 'D':
-            tokens.append(ch)
-        # 'O' kinds are skipped
-    if buf:
-        tokens.append("".join(buf))
-    return [t for t in tokens if t]
+from .segmentation import split_query_to_tokens
 
 
 def _collapse_hyphen_linebreak(norm_chars: List[str], bbox_map: List[Rect] | None = None) -> Tuple[List[str], List[Rect] | None]:
@@ -219,7 +170,7 @@ def find_progressive_phrase_segments(
     kmax: int = 3,
     ignore_case: bool = True,
     max_segment_gap_chars: int = 200,
-    min_total_words: int = 4,
+    min_total_words: int = 3,
 ) -> List[Tuple[int, int]]:
     """Progressively find segments from a query with 3→2→1-word backoff.
 
@@ -229,8 +180,8 @@ def find_progressive_phrase_segments(
     - After building segments, enforce proximity: each gap <= max_segment_gap_chars.
     - Returns list of (start,end) for the accepted segments; empty if none or gaps too large.
     """
-    # Tokenize by Unicode kind boundaries (spaces removed, delimiters as tokens)
-    tokens = tokenize_query_by_kind(query)
+    # Tokenize the query into mt5-base subwords (order preserved)
+    tokens = [normalize_char(t) for t in split_query_to_tokens(query)]
     if not tokens:
         return []
     if kmax < 1:
@@ -295,7 +246,7 @@ def find_progressive_candidates(
     kmax: int = 3,
     ignore_case: bool = True,
     max_segment_gap_chars: int = 200,
-    min_total_words: int = 4,
+    min_total_words: int = 3,
 ) -> List[List[Tuple[int, int, int]]]:
     """Return all passing progressive candidates as lists of segments (s,e,k).
 
@@ -303,8 +254,8 @@ def find_progressive_candidates(
     A candidate passes if its segments obey the gap constraint and total matched
     words >= min_total_words.
     """
-    # Tokenize by Unicode kind boundaries (spaces removed, delimiters as tokens)
-    tokens = tokenize_query_by_kind(query)
+    # Tokenize the query into mt5-base subwords (order preserved)
+    tokens = [normalize_char(t) for t in split_query_to_tokens(query)]
     if not tokens:
         return []
     if kmax < 1:
@@ -623,8 +574,8 @@ def _find_progressive_matches_by_page(
                 d = segs[j][0] - segs[j - 1][1]
                 if d > 0:
                     gaps += d
-            # Query total tokens from kind-based tokenization of the query
-            total_tokens = len(tokenize_query_by_kind(query))
+            # Total tokens refers to mt5-based subwords
+            total_tokens = len(split_query_to_tokens(query))
             matched_words = sum(k for (_, _, k) in segs)
             word_cov = matched_words / max(1, total_tokens)
             char_cov = matched_chars / float(length)
@@ -942,6 +893,10 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     p.add_argument("--opacity", type=float, default=0.3, help="Highlight opacity (0..1)")
     p.add_argument("--report", choices=["json"], help="Emit report to stdout (json)")
 
+    # mt5 segmentation controls
+    p.add_argument("--mt5-model", type=str, default=None, help="mt5 tokenizer model id or local path (default: google/mt5-base)")
+    p.add_argument("--no-mt5", action="store_true", help="Disable mt5-based segmentation (fallback to single-token)")
+
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     return p.parse_args(argv)
@@ -962,6 +917,13 @@ def _color_to_rgb(name: str) -> Tuple[float, float, float]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     ns = _parse_args(sys.argv[1:] if argv is None else argv)
+    # Configure segmenter based on CLI
+    try:
+        from .segmentation import configure_segmenter
+        configure_segmenter(use_mt5=(not getattr(ns, "no_mt5", False)), model_id=getattr(ns, "mt5_model", None))
+    except Exception:
+        # If segmentation module cannot be configured, proceed; runtime will warn/fallback as needed
+        pass
     # Recipe mode
     if getattr(ns, "recipe", None):
         try:

@@ -21,6 +21,8 @@ classifiers = [
 ]
 dependencies = [
   "pymupdf>=1.24.0",
+  "transformers>=4.40",
+  "sentencepiece>=0.1.99",
 ]
 
 [project.scripts]
