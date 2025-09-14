@@ -8,6 +8,10 @@ import unicodedata
 from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple, Any
 
+try:
+    from .__about__ import __version__
+except:
+    __version_ = '(unknown)'
 
 # Exit codes aligned with discussion spec
 EXIT_OK = 0
@@ -937,6 +941,9 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     p.add_argument("--color", type=str, default="yellow", help="Highlight color: name|#RRGGBB|r,g,b (0..1)")
     p.add_argument("--opacity", type=float, default=0.3, help="Highlight opacity (0..1)")
     p.add_argument("--report", choices=["json"], help="Emit report to stdout (json)")
+
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+
     return p.parse_args(argv)
 
 
