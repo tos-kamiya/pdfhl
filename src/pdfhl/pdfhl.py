@@ -172,13 +172,15 @@ def find_progressive_phrase_segments(
     max_segment_gap_chars: int = 200,
     min_total_words: int = 3,
 ) -> List[Tuple[int, int]]:
-    """Progressively find segments from a query with 3→2→1-word backoff.
+    r"""Progressively find segments from a query with 3→2→1-word backoff.
 
     - Normalizes the query like the page text (callers should normalize text).
     - Between words in a chunk, allow "\s*" to match across newlines/missing spaces.
     - Chains matches left-to-right; each next search starts from the previous end.
     - After building segments, enforce proximity: each gap <= max_segment_gap_chars.
     - Returns list of (start,end) for the accepted segments; empty if none or gaps too large.
+    - Implementation detail: contiguous segments (end == next start) are merged to
+      produce intuitively larger spans across missing spaces or subword splits.
     """
     # Tokenize the query into mt5-base subwords (order preserved)
     tokens = [normalize_char(t) for t in split_query_to_tokens(query)]
@@ -234,8 +236,19 @@ def find_progressive_phrase_segments(
             chain = build_chain(k0, m0.end())
             segs = [starter] + chain
             if passes_chain(segs):
-                # Drop k info when returning
-                return [(s, e) for (s, e, _) in segs]
+                # Drop k info when returning, then merge contiguous segments to be robust
+                # against subword tokenization differences (e.g., MSCCD -> ["ms", "cc", "d"]).
+                raw = [(s, e) for (s, e, _) in segs]
+                if not raw:
+                    return []
+                merged: List[Tuple[int, int]] = [raw[0]]
+                for (s, e) in raw[1:]:
+                    ps, pe = merged[-1]
+                    if s == pe:  # contiguous; coalesce
+                        merged[-1] = (ps, e)
+                    else:
+                        merged.append((s, e))
+                return merged
     return []
 
 
