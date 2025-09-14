@@ -6,7 +6,7 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple, Any
+from typing import List, Sequence, Tuple, Any
 
 try:
     from .__about__ import __version__
@@ -496,7 +496,6 @@ def process_file(
         pdf_path,
         out_path,
         [item],
-        default_allow_multiple=allow_multiple,
         dry_run=dry_run,
         default_label=label,
         default_color_rgb=color_rgb,
@@ -649,7 +648,6 @@ def process_recipe(
     out_path: Path | None,
     recipe_items: Sequence[dict[str, Any]],
     *,
-    default_allow_multiple: bool,
     dry_run: bool,
     default_label: str | None,
     default_color_rgb: Tuple[float, float, float],
@@ -950,7 +948,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             ns.pdf,
             ns.output,
             items,  # type: ignore[arg-type]
-            default_allow_multiple=True,
             dry_run=ns.dry_run,
             default_label=ns.label,
             default_color_rgb=_parse_color(ns.color),
@@ -990,7 +987,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         ns.pdf,
         ns.output,
         items,
-        default_allow_multiple=True,
         dry_run=ns.dry_run,
         default_label=ns.label,
         default_color_rgb=_parse_color(ns.color),
