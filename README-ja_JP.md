@@ -269,6 +269,22 @@ pytest -q
 pdfhl input.pdf --text "..." --mt5-model /path/to/google/mt5-base
 ```
 
+### デッドコード検査（Vulture）
+
+Vulture を環境にインストールし、付属スクリプトを実行します：
+
+```bash
+uv pip install vulture  # または: pip install vulture
+extra-utils/run-vulture.sh
+```
+
+動的参照（文字列経由の getattr 等）で Vulture が検出できないものがある場合、ホワイトリストの雛形を生成して調整します：
+
+```bash
+vulture src --min-confidence 90 --make-whitelist > vulture_whitelist.py
+extra-utils/run-vulture.sh
+```
+
 ## ライセンス
 
 `pdfhl` は [MIT](https://spdx.org/licenses/MIT.html) ライセンスの条件の下で配布されています。
