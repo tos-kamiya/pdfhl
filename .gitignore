@@ -1,0 +1,27 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments and local tooling caches
+.venv/
+.uv-cache/
+.pytest_cache/
+.ropeproject/
+
+# Local tools / editors
+.DS_Store
+*.swp
+*.swo
+
+# Project-specific
+.serena/
+
+# Build / coverage artifacts (none currently, reserved)
+dist/
+build/
+sdist/
+wheelhouse/
+.coverage
+htmlcov/
+
