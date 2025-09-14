@@ -532,15 +532,7 @@ def _parse_color(value: str | Sequence[float]) -> Tuple[float, float, float]:
     return _color_to_rgb("yellow")
 
 
-def _find_matches_by_page(doc, rx: re.Pattern[str]) -> Tuple[int, dict[int, List[Tuple[int, int]]]]:
-    total = 0
-    by_page: dict[int, List[Tuple[int, int]]] = {}
-    for pi, page in enumerate(doc):
-        norm_text, _ = _build_page_text_and_map(page)
-        for m in rx.finditer(norm_text):
-            total += 1
-            by_page.setdefault(pi, []).append((m.start(), m.end()))
-    return total, by_page
+ 
 
 
 def _find_progressive_matches_by_page(
