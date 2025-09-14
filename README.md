@@ -18,11 +18,19 @@ While you can of course run `pdfhl` manually, its main purpose is to serve as a 
 
 ## Installation
 
+Install via pipx from GitHub (recommended):
+
 ```bash
-pip install pdfhl
+pipx install git+https://github.com/tos-kamiya/pdfhl@v0.2.0
 ```
 
-Requires Python 3.10+ and [PyMuPDF](https://pypi.org/project/PyMuPDF/) (installed automatically as a dependency).
+To track the latest main branch instead of the tagged release:
+
+```bash
+pipx install --force git+https://github.com/tos-kamiya/pdfhl
+```
+
+Requires Python 3.10+. pipx installs into an isolated environment and exposes the `pdfhl` CLI on your PATH. To upgrade later, rerun the same `pipx install` command with `--force`.
 
 ## Quick Start
 
