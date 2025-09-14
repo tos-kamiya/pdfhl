@@ -18,11 +18,21 @@
 
 ## インストール
 
+推奨: GitHub から pipx でインストールします。
+
+安定版タグ（v0.2.0）をインストール:
+
 ```bash
-pip install pdfhl
+pipx install git+https://github.com/tos-kamiya/pdfhl@v0.2.0
 ```
 
-Python 3.10+ と [PyMuPDF](https://pypi.org/project/PyMuPDF/) が必要です（依存関係として自動的にインストールされます）。
+タグではなく最新の main ブランチを使う場合:
+
+```bash
+pipx install --force git+https://github.com/tos-kamiya/pdfhl
+```
+
+要件: Python 3.10+。pipx は隔離された環境にインストールし、`pdfhl` CLI を PATH に公開します。後からアップグレードする場合は、同じ `pipx install` コマンドを `--force` 付きで再実行してください。
 
 ## クイックスタート
 
