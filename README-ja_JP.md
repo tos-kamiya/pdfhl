@@ -234,10 +234,34 @@ pdfhl PDF [--text TEXT | --recipe JSON] [options]
 
 ## 開発
 
-テストの実行：
+### テストの実行
+
+パッケージ自体をインストールせずにテストを実行できます。uv または標準の venv/pip のどちらでもOKです。
+
+Option A — uv（推奨）:
 ```bash
+# .venv/ に仮想環境を作成して有効化
+uv venv
+source .venv/bin/activate
+
+# pytest のみインストール（テストは重い依存を避けています）
+uv pip install pytest
+
+# テスト実行
 pytest -q
 ```
+
+Option B — Python 標準 venv/pip:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -U pip pytest
+pytest -q
+```
+
+注記
+- テストは純粋ロジック中心で、PyMuPDF や transformers が未インストールでも動作します。未インストール時の警告は無害です。
+- 仮想環境をアクティベートせず、フルパス指定（例: `.venv/bin/pytest -q`）でも実行できます。
 
 オフラインで mt5 を使う場合は、モデルディレクトリを事前に用意し（キャッシュをコピー等）、次のように指定してください：
 

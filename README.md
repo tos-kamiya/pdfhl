@@ -232,10 +232,34 @@ Additional notes
 
 ## Development
 
-Run tests:
+### Running Tests
+
+You can run the test suite without installing the package itself. Choose either uv or plain venv/pip.
+
+Option A — uv (recommended):
 ```bash
+# Create and activate a virtualenv in .venv/
+uv venv
+source .venv/bin/activate
+
+# Install pytest only (tests avoid heavy deps)
+uv pip install pytest
+
+# Run tests
 pytest -q
 ```
+
+Option B — Python built-in venv/pip:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -U pip pytest
+pytest -q
+```
+
+Notes
+- Tests focus on pure logic and do not require PyMuPDF or transformers. You may see harmless warnings if those libraries are not installed.
+- If you prefer, you can run without activating the venv by using the full path, e.g. `.venv/bin/pytest -q`.
 
 For offline use of mt5, pre-download the model directory (e.g., with `transformers-cli` or by copying from a machine with cache) and run:
 
