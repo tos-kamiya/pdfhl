@@ -93,6 +93,11 @@ The provided prompt uses three colors:
 * **Green** — Experiment
 * **Red** — Threats to validity
 
+**Examples**
+
+* [docs/icpc-2022-zhu.highlighted.pdf](docs/icpc-2022-zhu.highlighted.pdf)
+* [docs/kbse-202405-kamiya.highlighted.pdf](docs/kbse-202405-kamiya.highlighted.pdf) (in Japanese)
+
 ## CLI Reference
 
 ```

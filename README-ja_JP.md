@@ -95,6 +95,11 @@ codex や gemini-cli にプロンプトを入力し、必要に応じてファ�
 * **緑** = 実験
 * **赤** = 妥当性の脅威
 
+**実行例**
+
+* [docs/icpc-2022-zhu.highlighted.pdf](docs/icpc-2022-zhu.highlighted.pdf)
+* [docs/kbse-202405-kamiya.highlighted.pdf](docs/kbse-202405-kamiya.highlighted.pdf) (日本語)
+
 ## CLIリファレンス
 
 ```
