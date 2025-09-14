@@ -24,7 +24,7 @@
 安定版タグ（v0.2.0）をインストール:
 
 ```bash
-pipx install git+https://github.com/tos-kamiya/pdfhl@v0.2.0
+pipx install git+https://github.com/tos-kamiya/pdfhl@v0.3.0
 ```
 
 タグではなく最新の main ブランチを使う場合:
