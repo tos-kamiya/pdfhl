@@ -34,7 +34,7 @@ def test_progressive_backoff_to_two_and_one_word():
 def test_collapse_to_shortest_range():
     by_page = {
         0: [(10, 40), (100, 120)],  # lengths: 30, 20
-        1: [(5, 30)],                # length: 25
+        1: [(5, 30)],  # length: 25
     }
     total, collapsed = _collapse_to_shortest(by_page)
     assert total == 1

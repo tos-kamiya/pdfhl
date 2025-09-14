@@ -22,4 +22,3 @@ def test_group_bboxes_to_line_rects_merges_lines():
     assert x0b == 10.0 and x1b == 18.0
     assert y0a <= 10.2 and y1a >= 14.0
     assert y0b <= 30.1 and y1b >= 34.0
-

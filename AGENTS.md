@@ -64,3 +64,32 @@
 
 Notes:
 - Historical session logs may exist under `docs/` (e.g., `docs/session-YYYY-MM-DD.md`). New logs should go to `dev-notes/`.
+
+## Decision Safeguards (Strong Stop)
+- When a requested change is risky, ambiguous, or conflicts with this guide, the agent must issue a prominent HARD STOP warning with emojis and pause work until explicit confirmation.
+- Trigger examples:
+  - Ambiguity in requirements or library choice (e.g., sentence vs token segmentation)
+  - Irreversible/destructive actions (history rewrites, large deletes)
+  - Large refactors without tests or clear rollback
+  - Security-sensitive or dependency changes without validation
+  - Cross‑cutting API changes impacting many files
+  - Conflicts with testing conventions or this AGENTS.md
+- Process:
+  - Post a stop message that summarizes the risk and proposes safer options.
+  - Request explicit approval keywords: APPROVE / ADJUST / SPLIT / SKIP.
+  - Prefer incremental changes with minimal tests and/or feature flags.
+  - Log the decision point and commands in `dev-notes/session-YYYY-MM-DD.md`.
+- Example warning:
+  
+  ```text
+  ⛔️ HARD STOP — Risky/ambiguous change detected
+  - Issue: Library mismatch (sentence vs token segmentation) could cause a broad revert.
+  - Risk: High scope + unclear intent; potential breakage across components.
+  - Proposal: Clarify target behavior, add a minimal test, then proceed incrementally.
+  Please reply with:
+  - APPROVE to proceed as-is,
+  - ADJUST with clarified constraints,
+  - SPLIT to stage into smaller PRs, or
+  - SKIP to avoid this change.
+  ```
+- Scope: Applies to the entire repository. More-nested AGENTS.md files may refine but not weaken these safeguards.

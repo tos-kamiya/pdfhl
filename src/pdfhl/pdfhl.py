@@ -11,7 +11,7 @@ from typing import Iterable, List, Sequence, Tuple, Any
 try:
     from .__about__ import __version__
 except:
-    __version_ = '(unknown)'
+    __version_ = "(unknown)"
 
 # Exit codes aligned with discussion spec
 EXIT_OK = 0
@@ -78,17 +78,17 @@ def _collapse_hyphen_linebreak(norm_chars: List[str], bbox_map: List[Rect] | Non
     n = len(norm_chars)
     while i < n:
         ch = norm_chars[i]
-        if ch == '-' and (i + 1) < n:
+        if ch == "-" and (i + 1) < n:
             # Decide whether this is a line-break hyphenation to be collapsed
             # Gather context: prev non-space, next non-space index, and whether next is on a new line
             j = len(out_chars) - 1
-            while j >= 0 and out_chars[j] == ' ':
+            while j >= 0 and out_chars[j] == " ":
                 j -= 1
             prev_alpha = j >= 0 and out_chars[j].isalpha()
 
             # Determine next non-space index in input
             k = i + 1
-            while k < n and norm_chars[k] == ' ':
+            while k < n and norm_chars[k] == " ":
                 k += 1
             next_alpha = k < n and norm_chars[k].isalpha()
 
@@ -96,8 +96,8 @@ def _collapse_hyphen_linebreak(norm_chars: List[str], bbox_map: List[Rect] | Non
             token_has_hyphen = False
             if j >= 0:
                 t = j
-                while t >= 0 and out_chars[t] != ' ':
-                    if out_chars[t] == '-':
+                while t >= 0 and out_chars[t] != " ":
+                    if out_chars[t] == "-":
                         token_has_hyphen = True
                         break
                     t -= 1
@@ -115,7 +115,7 @@ def _collapse_hyphen_linebreak(norm_chars: List[str], bbox_map: List[Rect] | Non
             should_collapse = False
             if prev_alpha and next_alpha and not token_has_hyphen:
                 # Case A: hyphen followed by spaces then letters (common soft wrap)
-                if (i + 1) < n and norm_chars[i + 1] == ' ':
+                if (i + 1) < n and norm_chars[i + 1] == " ":
                     should_collapse = True
                 # Case B: immediate next letter but on a new line per bbox
                 elif y_jump_linebreak:
@@ -124,7 +124,7 @@ def _collapse_hyphen_linebreak(norm_chars: List[str], bbox_map: List[Rect] | Non
             if should_collapse:
                 # If spaces follow, skip them; otherwise just skip hyphen
                 skip_to = i + 1
-                while skip_to < n and norm_chars[skip_to] == ' ':
+                while skip_to < n and norm_chars[skip_to] == " ":
                     skip_to += 1
                 i = skip_to
                 continue
@@ -190,7 +190,7 @@ def find_progressive_phrase_segments(
     flags = re.IGNORECASE if ignore_case else 0
 
     def compile_chunk(i0: int, k: int) -> re.Pattern[str]:
-        chunk = tokens[i0:i0 + k]
+        chunk = tokens[i0 : i0 + k]
         patt = r"\s*".join(re.escape(tok) for tok in chunk)
         return re.compile(patt, flags)
 
@@ -264,7 +264,7 @@ def find_progressive_candidates(
     flags = re.IGNORECASE if ignore_case else 0
 
     def compile_chunk(i0: int, k: int) -> re.Pattern[str]:
-        chunk = tokens[i0:i0 + k]
+        chunk = tokens[i0 : i0 + k]
         patt = r"\s*".join(re.escape(tok) for tok in chunk)
         return re.compile(patt, flags)
 
@@ -395,9 +395,9 @@ def _sanitize_rect(r: Rect, eps: float = 0.25) -> Rect | None:
     return (float(x0), float(y0), float(x1), float(y1))
 
 
-def _add_highlight_for_range(page, rects: Sequence[Rect], label: str | None = None,
-                             color_rgb: Tuple[float, float, float] | None = None,
-                             opacity: float | None = None) -> bool:
+def _add_highlight_for_range(
+    page, rects: Sequence[Rect], label: str | None = None, color_rgb: Tuple[float, float, float] | None = None, opacity: float | None = None
+) -> bool:
     """Add a highlight annotation for the provided line rectangles.
 
     Converts rects into quads and adds a highlight.
@@ -408,7 +408,7 @@ def _add_highlight_for_range(page, rects: Sequence[Rect], label: str | None = No
         return False
     # Convert each rect to a sanitized 8-tuple quad
     quads = []
-    for (x0, y0, x1, y1) in rects:
+    for x0, y0, x1, y1 in rects:
         r = _sanitize_rect((x0, y0, x1, y1))
         if r is None:
             continue
@@ -421,7 +421,7 @@ def _add_highlight_for_range(page, rects: Sequence[Rect], label: str | None = No
         annot = page.add_highlight_annot(quads=quads)
     except Exception:
         # Fallback: draw semi-transparent rectangles if highlight fails
-        for (x0, y0, x1, y1) in rects:
+        for x0, y0, x1, y1 in rects:
             r = _sanitize_rect((x0, y0, x1, y1))
             if r is None:
                 continue
@@ -445,8 +445,7 @@ def _add_highlight_for_range(page, rects: Sequence[Rect], label: str | None = No
     return True
 
 
-def _highlight_match(page, bbox_map: Sequence[Rect], start: int, end: int,
-                     *, label: str | None, color_rgb: Tuple[float, float, float], opacity: float) -> bool:
+def _highlight_match(page, bbox_map: Sequence[Rect], start: int, end: int, *, label: str | None, color_rgb: Tuple[float, float, float], opacity: float) -> bool:
     if start >= end or start < 0 or end > len(bbox_map):
         return False
     rects = group_bboxes_to_line_rects(bbox_map[start:end])
@@ -590,7 +589,7 @@ def _find_progressive_matches_by_page(
                 s0, eN = segs[0][0], segs[-1][1]
                 length = eN - s0
                 key = (sc, -length, -s0)
-                if best_global is None or key > (best_global[0], -(best_global[3]-best_global[2]), -best_global[2]):
+                if best_global is None or key > (best_global[0], -(best_global[3] - best_global[2]), -best_global[2]):
                     best_global = (sc, pi, s0, eN)
         else:
             # Return all ranges
@@ -617,16 +616,14 @@ def _collapse_to_shortest(by_page: dict[int, List[Tuple[int, int]]]) -> Tuple[in
     """
     best: Tuple[int, int, int] | None = None  # (pi, s, e)
     for pi, ranges in by_page.items():
-        for (s, e) in ranges:
+        for s, e in ranges:
             if best is None:
                 best = (pi, s, e)
                 continue
             bs, be = best[1], best[2]
             cur_len = e - s
             best_len = be - bs
-            if cur_len < best_len or (
-                cur_len == best_len and (pi < best[0] or (pi == best[0] and s < bs))
-            ):
+            if cur_len < best_len or (cur_len == best_len and (pi < best[0] or (pi == best[0] and s < bs))):
                 best = (pi, s, e)
     if best is None:
         return 0, {}
@@ -830,15 +827,15 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
             "\n"
             "Example (array):\n"
             "  [\\n"
-            "    {\"text\": \"Introduction\", \"color\": \"mint\"},\\n"
-            "    {\"text\": \"Threats\", \"color\": \"red\"}\\n"
+            '    {"text": "Introduction", "color": "mint"},\\n'
+            '    {"text": "Threats", "color": "red"}\\n'
             "  ]\n"
             "\n"
             "Example (object):\n"
             "  {\\n"
-            "    \"items\": [\\n"
-            "      { \"text\": \"Experiment\", \"color\": \"green\", \"label\": \"Experiment\" },\\n"
-            "      { \"text\": \"Conclusion\", \"color\": \"violet\", \"opacity\": 0.25 }\\n"
+            '    "items": [\\n'
+            '      { "text": "Experiment", "color": "green", "label": "Experiment" },\\n'
+            '      { "text": "Conclusion", "color": "violet", "opacity": 0.25 }\\n'
             "    ]\\n"
             "  }\n"
             "\n"
@@ -867,10 +864,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     mode.add_argument(
         "--recipe",
         type=Path,
-        help=(
-            "JSON recipe path for multiple highlights (list of items).\n"
-            "See 'JSON Recipe Format' in --help below."
-        ),
+        help=("JSON recipe path for multiple highlights (list of items).\n" "See 'JSON Recipe Format' in --help below."),
     )
     # Progressive-only: no regex mode
 
@@ -920,6 +914,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Configure segmenter based on CLI
     try:
         from .segmentation import configure_segmenter
+
         configure_segmenter(use_mt5=(not getattr(ns, "no_mt5", False)), model_id=getattr(ns, "mt5_model", None))
     except Exception:
         # If segmentation module cannot be configured, proceed; runtime will warn/fallback as needed

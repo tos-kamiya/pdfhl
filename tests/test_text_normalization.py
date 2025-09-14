@@ -53,7 +53,7 @@ def test_collapse_hyphenation_linebreak_join():
     # place hyphen at index of the second '-' (between 'of' and 'the') and simulate a line break there
     # Build bbox: same y for all, except char after that hyphen has larger y
     bboxes = []
-    hyphen_pos = chars3.index('-', chars3.index('-') + 1)
+    hyphen_pos = chars3.index("-", chars3.index("-") + 1)
     for idx, _c in enumerate(chars3):
         y = 100.0
         if idx == hyphen_pos + 1:
