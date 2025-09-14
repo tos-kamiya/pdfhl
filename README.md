@@ -2,6 +2,11 @@
 
 PDF text highlighter with progressive, tolerant phrase matching.
 
+**Designed for AI agents**  (such as codex or gemini-cli):
+`pdfhl` was created to be easily used inside LLM-driven workflows. The tool’s robust matching (progressive phrase matching, tolerant normalization) ensures that AI agents can highlight text reliably **without breaking their workflow**.
+
+While you can of course run `pdfhl` manually, its main purpose is to serve as a reliable building block, such as academic paper highlighting and other automated reading tasks.
+
 ## Overview
 
 `pdfhl` searches for phrases in a PDF and highlights matches. Its search is robust to common PDF quirks and formatting variations.
@@ -48,6 +53,34 @@ pdfhl input.pdf --recipe recipe.json -o out.pdf
 See more in `examples/`:
 - `examples/simple-recipe-array.json`
 - `examples/recipe-with-items-object.json`
+
+## Use Case: Academic Paper Highlighting
+
+One key use case of this tool is to **highlight important parts of academic papers** (approach, experiment, threats to validity) for quick review.
+
+We provide helper resources under `extra-utils/`:
+
+* `extra-utils/pdftopages` — splits a PDF into per-page text (Markdown)
+* `extra-utils/prompt-paper-highlights.txt` — a prompt that guides the LLM to identify important sentences and apply highlights
+
+### How to Use (Interactive)
+
+Just paste the prompt into your LLM CLI (codex, gemini-cli, etc.), replace the file name, and run interactively.
+
+1. Copy the contents of `extra-utils/prompt-paper-highlights.txt`.
+2. Replace the placeholder `{file.pdf}` at the top with the actual filename of your paper.
+3. Paste it into codex or gemini-cli.
+4. Make sure `pdftopages` is either in a directory on your `$PATH`, **or** adjust the prompt to call it using its full path.
+
+This interactive style lets you “poke” the CLI with the prompt, tweak the filename or script path as needed, and let the LLM guide the process (splitting pages, finding important sentences, applying highlights with `pdfhl`). No additional scripting is required.
+
+### Color Convention
+
+The provided prompt uses three colors:
+
+* **Blue** — Approach
+* **Green** — Experiment
+* **Red** — Threats to validity
 
 ## CLI Reference
 
