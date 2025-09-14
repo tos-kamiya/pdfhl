@@ -267,22 +267,6 @@ For offline use of mt5, pre-download the model directory (e.g., with `transforme
 pdfhl input.pdf --text "..." --mt5-model /path/to/google/mt5-base
 ```
 
-### Dead Code Scan (Vulture)
-
-Install Vulture into your environment and run the helper script:
-
-```bash
-uv pip install vulture  # or: pip install vulture
-extra-utils/run-vulture.sh
-```
-
-If you have dynamic references that Vulture can’t see, generate a whitelist skeleton and refine it:
-
-```bash
-vulture src --min-confidence 90 --make-whitelist > vulture_whitelist.py
-extra-utils/run-vulture.sh
-```
-
 ## License
 
 `pdfhl` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
