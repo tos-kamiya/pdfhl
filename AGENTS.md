@@ -32,38 +32,46 @@
   - Reference issues in the body (e.g., `Closes #123`).
   - One logical change per commit; split unrelated changes.
 
-## Session Logging (Raw‑ish Notes in `dev-notes/`)
-- Goal: Leave a human‑readable, raw‑ish session record under `dev-notes/session-YYYY-MM-DD.md` (not a full transcript, but close).
-- When starting work:
-  - Create `dev-notes/session-YYYY-MM-DD.md` and add a short header (date, scope).
-- While working (for each meaningful action):
-  - Append a small block capturing what was done with a transcript feel:
-    - Time (HH:MM)
-    - Ran: the exact command (in backticks)
-    - Output (excerpt) as a fenced block, keep raw lines; truncate if too long
-    - Optional: Why / Result / Next (1–2 lines each)
-  - Example snippet to append:
-    
-    ```
-    - 10:22 Ran: `git log --oneline -n 3`
-      Output:
-      ```text
-      abcd123 feat: add X
-      efgh456 fix: Y
-      ....
-      ```
-      Why: Inspect recent commits
-      Result: Verified last change
-    ```
+## Session & Design Log (`dev-notes/`)
 
-- Group related commands under a short heading when it helps scanability.
-- Redact sensitive info (tokens, secrets, private paths) if they appear in output.
-- Prefer brevity for rationale; keep the output raw‑ish.
-- At the end, add a short summary (commits, tags, pushes, follow‑ups).
-- Optional: If you also capture a full terminal log (`script`, `tee`, etc.), reference the file at the top of the markdown and paste only key excerpts.
+- **File:** `dev-notes/session-YYYY-MM-DD.md`
+- **Primary Goal:** To create a human-readable log that captures the **"why"** behind key decisions made during a session. Design discussions and their outcomes should be the main focus.
+- **Secondary Goal:** To supplement these decisions with the **"how"** by logging relevant command-line transcripts for context, debugging, or reproducibility.
 
-Notes:
-- Historical session logs may exist under `docs/` (e.g., `docs/session-YYYY-MM-DD.md`). New logs should go to `dev-notes/`.
+### Logging Format
+
+Entries in the session log should prioritize one of the following two formats, depending on the context.
+
+#### 1. Design Decision (Default)
+
+Use this format as the default way to record the outcome of discussions.
+
+- **Structure:**
+  ```markdown
+  - **Topic:** {Brief description of the feature or problem}
+    - **Decision:** A clear and concise summary of the final decision.
+    - **Rationale:** The core reasons *why* this decision was made. Explain the benefits and trade-offs.
+    - **Alternatives Considered (Optional):** Briefly mention other options that were discussed and why they were not chosen.
+  ```
+
+#### 2. Command Transcript (When Necessary)
+
+Use this format when the specific commands, their sequence, and their output are critical for understanding an action (e.g., troubleshooting, verifying a change).
+
+- **Structure:**
+  ```markdown
+  - {Time HH:MM} Ran: `{command}`
+    Output:
+    ```text
+    {A concise excerpt of the output}
+    ```
+    Result: {Brief one-line explanation of the outcome}
+  ```
+
+### General Guidance
+- Prioritize logging **decisions** over raw transcripts. A log full of commands with no context is not useful.
+- Group related command transcripts under a single "Topic" or "Decision" entry when possible.
+- Keep outputs concise.
 
 ## Decision Safeguards (Strong Stop)
 - When a requested change is risky, ambiguous, or conflicts with this guide, the agent must issue a prominent HARD STOP warning with emojis and pause work until explicit confirmation.
