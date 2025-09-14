@@ -12,6 +12,7 @@ While you can of course run `pdfhl` manually, its main purpose is to serve as a 
 `pdfhl` searches for phrases in a PDF and highlights matches. Its search is robust to common PDF quirks and formatting variations.
 
 - **Progressive Phrase Matching**: Finds phrases even when words are separated by line breaks or other text. It works by matching chunks of words (e.g., 3-word, then 2-word chunks) and chaining them together.
+- **mt5-based Segmentation (default)**: Query phrases are split into multilingual SentencePiece subwords using `google/mt5-base`, which significantly improves matching for Japanese and mixed-language text. Minimum coverage defaults to 3 subwords.
 - **Tolerant Normalization**: Normalizes ligatures, character width (e.g., `ﬁ` → `f` + `i`), hyphens, and quotes.
 - **Selection Control**: Choose to highlight only the most compact (shortest) match in the document or all possible matches.
 - **Safe by Design**: Never overwrites the input PDF; always writes to a new file.
@@ -31,6 +32,8 @@ pipx install --force git+https://github.com/tos-kamiya/pdfhl
 ```
 
 Requires Python 3.10+. pipx installs into an isolated environment and exposes the `pdfhl` CLI on your PATH. To upgrade later, rerun the same `pipx install` command with `--force`.
+
+`pdfhl` uses `google/mt5-base` for subword segmentation by default. The Python packages `transformers` and `sentencepiece` are declared as dependencies and will be installed automatically. For offline environments, pre-download the model and pass `--mt5-model /path/to/mt5-base` (see below).
 
 ## Quick Start
 
@@ -120,6 +123,16 @@ pdfhl PDF [--text TEXT | --recipe JSON] [options]
 - `--report json`
   - Emit a JSON report to stdout.
 
+**Segmentation (mt5) Options**
+- `--mt5-model PATH_OR_ID`
+  - mt5 tokenizer model path or hub ID. Default: `google/mt5-base`. Can also set env `PDFHL_MT5_MODEL`.
+- `--no-mt5`
+  - Disable mt5-based segmentation. Fallback uses a simple whitespace split. You can also set env `PDFHL_USE_MT5=0`.
+
+Notes
+- By default, queries are segmented into mt5 subwords and then matched with `\s*` between subwords to tolerate missing spaces/line breaks.
+- Minimum coverage is 3 subwords; tune chunking via `progressive_kmax` (default 3) in recipes.
+
 **Output Policy**
 - The input PDF is never modified. The tool refuses to overwrite the input path; specify a different `-o/--output`.
 
@@ -160,6 +173,9 @@ You can pass either a top-level array of items or an object with an `items: [...
 - `opacity` (float | null): Highlight opacity (0..1). Falls back to the CLI default if not set.
 - `progressive_kmax` (int, default `3`): (Advanced) Max words in a search chunk.
 - `progressive_max_gap_chars` (int, default `200`): (Advanced) Max characters allowed in a gap between matched chunks.
+
+Additional notes
+- Query tokenization uses mt5 subwords. Coverage checks are in subwords; default minimum is 3.
 
 ## JSON Report (`--report json`)
 
@@ -219,6 +235,12 @@ You can pass either a top-level array of items or an object with an `items: [...
 Run tests:
 ```bash
 pytest -q
+```
+
+For offline use of mt5, pre-download the model directory (e.g., with `transformers-cli` or by copying from a machine with cache) and run:
+
+```bash
+pdfhl input.pdf --text "..." --mt5-model /path/to/google/mt5-base
 ```
 
 ## License
