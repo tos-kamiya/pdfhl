@@ -261,7 +261,7 @@ print(outcome.highlight_count, outcome.segment_matches, outcome.saved_path)
 from pdfhl import PdfHighlighter, SelectionMode
 
 with PdfHighlighter.open("examples/sample.pdf") as hl:
-    single = hl.highlight_text("pdfhl sample document", selection_mode=SelectionMode.BEST, dry_run=True)
+    single = hl.highlight_text("pdfhl sample document", selection_mode=SelectionMode.BEST, dry_run=True)  # dry-run なので PDF には反映されません
     multi = hl.highlight_text("progressive highlight example", color="violet", selection_mode=SelectionMode.ALL)
     summary = hl.save("examples/sample.highlighted.pdf")
 
