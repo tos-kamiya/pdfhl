@@ -35,7 +35,7 @@ pipx install --force git+https://github.com/tos-kamiya/pdfhl
 
 要件: Python 3.10+。上記コマンドでライブラリと `pdfhl-cli` 実行ファイルがインストールされます。
 
-既定でサブワード分割に `google/mt5-base` を使用します。Python パッケージ `transformers`、`sentencepiece`、`torch` はインストール時に自動的に導入されます。`google/mt5-base` のトークナイザー本体は初回実行時にダウンロードされ、キャッシュ後はオフラインでも利用可能です。環境変数 `PDFHL_MT5_MODEL` を設定すれば別のトークナイザーを使用可能です。
+既定でサブワード分割に `google/mt5-base` を使用します。トークナイザー本体は初回実行時にダウンロードされ、キャッシュ後はオフラインでも利用可能です。環境変数 `PDFHL_MT5_MODEL` を設定すれば別のトークナイザーを使用可能です。
 
 ## クイックスタート
 

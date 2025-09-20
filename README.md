@@ -33,7 +33,7 @@ pipx install --force git+https://github.com/tos-kamiya/pdfhl
 
 Requires Python 3.10+. These commands install the `pdfhl-cli` executable alongside the importable library.
 
-`pdfhl` uses `google/mt5-base` for subword segmentation by default. The Python packages `transformers`, `sentencepiece`, and `torch` install automatically with the package. Note that the `google/mt5-base` tokenizer itself is fetched on first use; once cached, later runs work offline. Advanced users can point to a different tokenizer via the `PDFHL_MT5_MODEL` environment variable.
+`pdfhl` uses `google/mt5-base` for subword segmentation by default. The tokenizer itself is fetched on first use; once cached, later runs work offline. Advanced users can point to a different tokenizer via the `PDFHL_MT5_MODEL` environment variable.
 
 ## Quick Start
 
