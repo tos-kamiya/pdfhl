@@ -5,8 +5,9 @@ import json
 import re
 import sys
 import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Sequence, Tuple, Any
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 
 try:
     from .__about__ import __version__
@@ -21,6 +22,306 @@ EXIT_ERROR = 3
 
 
 Rect = Tuple[float, float, float, float]
+
+
+@dataclass(frozen=True)
+class PageInfo:
+    page_index: int
+    page_number: int
+    width: float
+    height: float
+
+
+@dataclass(frozen=True)
+class HighlightHit:
+    page_index: int
+    page_number: int
+    start: int
+    end: int
+    rects: List[Rect]
+    text_snippet: str
+    segments: List[Tuple[int, int]]
+    color: Tuple[float, float, float]
+    label: str | None
+    applied: bool
+
+
+@dataclass
+class HighlightOutcome:
+    matches: int
+    hits: List[HighlightHit]
+    blocked: bool = False
+    not_found: bool = False
+    saved_path: Path | None = None
+    dry_run: bool = False
+    report_payload: Dict[str, Any] | None = None
+
+
+ColorInput = str | Sequence[float] | None
+
+
+class PdfHighlighter:
+    """Mutable PDF highlighting session supporting repeated queries."""
+
+    def __init__(self, doc, pdf_path: Path, *, write_mode: str = "copy") -> None:
+        self._doc = doc
+        self._pdf_path = Path(pdf_path)
+        self._write_mode = write_mode
+        self._closed = False
+        self._dirty = False
+        self._page_cache: Dict[int, Tuple[str, List[Rect]]] = {}
+        self._applied_hits: List[HighlightHit] = []
+        self._total_applied_matches = 0
+        self._blocked_any = False
+
+    @classmethod
+    def open(cls, path: str | Path, *, write_mode: str = "copy") -> PdfHighlighter:
+        import fitz  # type: ignore
+
+        pdf_path = Path(path)
+        try:
+            doc = fitz.open(pdf_path.as_posix())
+        except Exception as exc:  # pragma: no cover - I/O heavy path
+            raise RuntimeError(f"failed to open PDF: {exc}") from exc
+        return cls(doc, pdf_path, write_mode=write_mode)
+
+    # Context-manager helpers -------------------------------------------------
+    def __enter__(self) -> PdfHighlighter:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
+        self.close()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        try:
+            self._doc.close()
+        finally:
+            self._closed = True
+
+    # Core operations ---------------------------------------------------------
+    def highlight_text(
+        self,
+        text: str,
+        *,
+        color: ColorInput = "#ffeb3b",
+        label: str | None = None,
+        allow_multiple: bool = True,
+        ignore_case: bool = True,
+        literal_whitespace: bool = False,
+        regex: bool = False,
+        progressive: bool = True,
+        progressive_kmax: int = 3,
+        progressive_max_gap_chars: int = 200,
+        progressive_min_total_words: int = 3,
+        progressive_select_shortest: bool = True,
+        opacity: float = 0.3,
+        dry_run: bool = False,
+        page_filter: Callable[[PageInfo], bool] | None = None,
+    ) -> HighlightOutcome:
+        self._ensure_open()
+        query = str(text)
+        if not query:
+            return HighlightOutcome(matches=0, hits=[], not_found=True, dry_run=dry_run)
+
+        color_rgb = _parse_color(color) if color is not None else _color_to_rgb("yellow")
+        matches_by_page: Dict[int, List[Tuple[int, int]]] = {}
+
+        if progressive:
+            total, matches_by_page = _find_progressive_matches_by_page(
+                self._doc,
+                query,
+                kmax=progressive_kmax,
+                ignore_case=ignore_case,
+                max_segment_gap_chars=progressive_max_gap_chars,
+                min_total_words=progressive_min_total_words,
+                select_shortest=progressive_select_shortest,
+                page_filter=page_filter,
+            )
+        else:
+            pattern = _compile_pattern(
+                query,
+                regex=regex,
+                ignore_case=ignore_case,
+                literal_whitespace=literal_whitespace,
+            )
+            total, matches_by_page = _find_pattern_matches_by_page(
+                self._doc,
+                pattern,
+                page_filter=page_filter,
+            )
+
+        blocked = False
+        applied_hits: List[HighlightHit] = []
+
+        ordered: List[Tuple[int, int, int]] = []  # (page_index, start, end)
+        for pi, ranges in sorted(matches_by_page.items()):
+            for start, end in ranges:
+                ordered.append((pi, start, end))
+
+        if not ordered:
+            return HighlightOutcome(matches=0, hits=[], blocked=False, not_found=True, dry_run=dry_run)
+
+        if not allow_multiple and len(ordered) > 1:
+            blocked = True
+            ordered = ordered[:1]
+
+        for page_index, start, end in ordered:
+            page = self._doc[page_index]
+            norm_text, bbox_map = self._get_page_text_and_map(page_index, page)
+            rects = group_bboxes_to_line_rects(bbox_map[start:end])
+            applied = False
+            if not dry_run:
+                applied = _highlight_match(
+                    page,
+                    bbox_map,
+                    start,
+                    end,
+                    label=label,
+                    color_rgb=color_rgb,
+                    opacity=opacity,
+                )
+            hit = HighlightHit(
+                page_index=page_index,
+                page_number=page_index + 1,
+                start=start,
+                end=end,
+                rects=rects,
+                text_snippet=norm_text[start:end],
+                segments=[(start, end)],
+                color=color_rgb,
+                label=label,
+                applied=applied and not dry_run,
+            )
+            applied_hits.append(hit)
+
+        outcome = HighlightOutcome(
+            matches=len(ordered),
+            hits=applied_hits,
+            blocked=blocked,
+            not_found=False,
+            dry_run=dry_run,
+        )
+
+        if dry_run:
+            return outcome
+
+        applied_success = [hit for hit in applied_hits if hit.applied]
+        if applied_success:
+            self._dirty = True
+            self._applied_hits.extend(applied_success)
+            self._total_applied_matches += len(applied_success)
+        if blocked:
+            self._blocked_any = True
+
+        return outcome
+
+    def save(self, output: Path | None = None, *, garbage: int = 4, deflate: bool = True) -> HighlightOutcome:
+        self._ensure_open()
+        if self._write_mode == "copy" and output is not None:
+            target = Path(output)
+        else:
+            target = Path(output) if output is not None else self._pdf_path.with_suffix(".highlighted.pdf")
+
+        try:
+            same_target = target.resolve() == self._pdf_path.resolve()
+        except Exception:
+            same_target = target.as_posix() == self._pdf_path.as_posix()
+        if same_target and self._write_mode == "copy":
+            raise RuntimeError("refusing to overwrite input PDF; specify a different output path")
+
+        try:
+            self._doc.save(target.as_posix(), garbage=garbage, deflate=deflate)
+        except Exception as exc:  # pragma: no cover - I/O heavy path
+            raise RuntimeError(f"failed to save PDF: {exc}") from exc
+
+        self._dirty = False
+        return HighlightOutcome(
+            matches=self._total_applied_matches,
+            hits=list(self._applied_hits),
+            blocked=self._blocked_any,
+            not_found=(self._total_applied_matches == 0),
+            saved_path=target,
+            dry_run=False,
+        )
+
+    # Internal helpers --------------------------------------------------------
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("PDF highlighter already closed")
+
+    def _get_page_text_and_map(self, page_index: int, page) -> Tuple[str, List[Rect]]:
+        cached = self._page_cache.get(page_index)
+        if cached is not None:
+            return cached
+        norm_text, bbox_map = _build_page_text_and_map(page)
+        self._page_cache[page_index] = (norm_text, bbox_map)
+        return norm_text, bbox_map
+
+
+def highlight_text(
+    pdf_path: str | Path,
+    text: str,
+    *,
+    output: Path | None = None,
+    dry_run: bool = False,
+    **kwargs: Any,
+) -> HighlightOutcome:
+    """Convenience wrapper: highlight once and optionally save."""
+
+    method_dry_run = bool(kwargs.pop("dry_run", False) or dry_run)
+    with PdfHighlighter.open(pdf_path) as highlighter:
+        outcome = highlighter.highlight_text(text, dry_run=method_dry_run, **kwargs)
+        if method_dry_run:
+            return outcome
+        return highlighter.save(output)
+
+
+def _compile_pattern(
+    text: str,
+    *,
+    regex: bool,
+    ignore_case: bool,
+    literal_whitespace: bool,
+) -> re.Pattern[str]:
+    if regex:
+        flags = re.IGNORECASE if ignore_case else 0
+        return re.compile(text, flags)
+    return pattern_from_text(
+        text,
+        literal_whitespace=literal_whitespace,
+        regex=False,
+        ignore_case=ignore_case,
+    )
+
+
+def _find_pattern_matches_by_page(
+    doc,
+    pattern: re.Pattern[str],
+    *,
+    page_filter: Callable[[PageInfo], bool] | None = None,
+) -> Tuple[int, Dict[int, List[Tuple[int, int]]]]:
+    total = 0
+    by_page: Dict[int, List[Tuple[int, int]]] = {}
+    for page_index in range(doc.page_count):
+        page = doc[page_index]
+        info = PageInfo(
+            page_index=page_index,
+            page_number=page_index + 1,
+            width=float(page.rect.width),
+            height=float(page.rect.height),
+        )
+        if page_filter and not page_filter(info):
+            continue
+        norm_text, _ = _build_page_text_and_map(page)
+        ranges: List[Tuple[int, int]] = []
+        for match in pattern.finditer(norm_text):
+            ranges.append((match.start(), match.end()))
+        if ranges:
+            by_page[page_index] = ranges
+            total += len(ranges)
+    return total, by_page
 
 
 def normalize_char(c: str) -> str:
@@ -539,7 +840,9 @@ def _find_progressive_matches_by_page(
     kmax: int,
     ignore_case: bool,
     max_segment_gap_chars: int,
+    min_total_words: int,
     select_shortest: bool,
+    page_filter: Callable[[PageInfo], bool] | None = None,
 ) -> Tuple[int, dict[int, List[Tuple[int, int]]]]:
     """Run progressive phrase search per page and select ranges.
 
@@ -551,6 +854,14 @@ def _find_progressive_matches_by_page(
     # For global-best selection, track the overall best across pages
     best_global: Tuple[float, int, int, int] | None = None  # (score, pi, s0, eN)
     for pi, page in enumerate(doc):
+        info = PageInfo(
+            page_index=pi,
+            page_number=pi + 1,
+            width=float(page.rect.width),
+            height=float(page.rect.height),
+        )
+        if page_filter and not page_filter(info):
+            continue
         norm_text, _ = _build_page_text_and_map(page)
         cands = find_progressive_candidates(
             norm_text,
@@ -558,6 +869,7 @@ def _find_progressive_matches_by_page(
             kmax=kmax,
             ignore_case=ignore_case,
             max_segment_gap_chars=max_segment_gap_chars,
+            min_total_words=min_total_words,
         )
         if not cands:
             continue
@@ -623,20 +935,12 @@ def process_recipe(
     compat_single_report: bool = False,
 ) -> int:
     """Apply multiple highlights described in a JSON recipe in one pass."""
-    import fitz  # type: ignore
 
-    try:
-        doc = fitz.open(pdf_path.as_posix())
-    except Exception as e:  # pragma: no cover - I/O
-        print(f"[ERROR] failed to open PDF: {e}", file=sys.stderr)
-        return EXIT_ERROR
-
-    # Determine effective output path for reporting
-    effective_out = (out_path or pdf_path.with_suffix(".highlighted.pdf")).as_posix()
+    effective_out_path = out_path or pdf_path.with_suffix(".highlighted.pdf")
 
     aggregate: dict[str, Any] = {
         "input": pdf_path.as_posix(),
-        "output": effective_out,
+        "output": effective_out_path.as_posix(),
         "items": [],
     }
     if report_context:
@@ -645,111 +949,117 @@ def process_recipe(
     overall_not_found = False
     overall_multiple_blocked = False
 
-    for idx, item in enumerate(recipe_items):
-        text = item.get("text") or item.get("pattern")
-        if not text:
-            print(f"[INFO] recipe item {idx}: missing 'text'/'pattern' field; skipping", file=sys.stderr)
-            aggregate["items"].append({"index": idx, "matches": 0, "skipped": True})
-            continue
-        # Progressive-only search: ignore regex/literal whitespace; do not block on multiples
-        regex = False
-        ignore_case = bool(item.get("ignore_case", True))
-        literal_ws = False
-        allow_multiple = True
-        label = item.get("label", default_label)
-        color_val = item.get("color", None)
-        color_rgb = _parse_color(color_val) if color_val is not None else default_color_rgb
-        opacity = float(item.get("opacity", default_opacity))
-        # Progressive search options (always used)
-        progressive_search = True
-        progressive_kmax = int(item.get("progressive_kmax", 3))
-        progressive_gap = int(item.get("progressive_max_gap_chars", 200))
-        select_shortest = bool(item.get("select_shortest", True))
+    try:
+        highlighter = PdfHighlighter.open(pdf_path)
+    except RuntimeError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return EXIT_ERROR
 
-        # Progressive search only
-        rx = None
-        total = 0
-        by_page: dict[int, List[Tuple[int, int]]] = {}
-        prog_used = True
-        t2, bp2 = _find_progressive_matches_by_page(
-            doc,
-            str(text),
-            kmax=progressive_kmax,
-            ignore_case=ignore_case,
-            max_segment_gap_chars=progressive_gap,
-            select_shortest=select_shortest,
-        )
-        if t2 > 0:
-            total, by_page = t2, bp2
-
-        # Selection to single best is handled inside _find_progressive_matches_by_page
-
-        report_hits: List[dict] = []
-        if total > 0:
-            for pi, ranges in by_page.items():
-                page = doc[pi]
-                _, bbox_map = _build_page_text_and_map(page)
-                for s, e in ranges:
-                    rects = group_bboxes_to_line_rects(bbox_map[s:e])
-                    report_hits.append(
-                        {
-                            "page_index": pi,
-                            "page_number": pi + 1,
-                            "start": s,
-                            "end": e,
-                            "rects": [(x0, y0, x1, y1) for (x0, y0, x1, y1) in rects],
-                        }
-                    )
-
-        if total == 0:
-            overall_not_found = True
-            print(f"[INFO] recipe item {idx}: no matches found", file=sys.stderr)
-        else:
-            # Apply highlights unless dry-run
-            if not dry_run:
-                for pi, ranges in by_page.items():
-                    page = doc[pi]
-                    _, bbox_map = _build_page_text_and_map(page)
-                    for s, e in ranges:
-                        _highlight_match(page, bbox_map, s, e, label=label, color_rgb=color_rgb, opacity=opacity)
-
-        aggregate_item = {
-            "index": idx,
-            "query": str(text),
-            "pattern": (rx.pattern if rx is not None else None),
-            "regex": regex,
-            "ignore_case": ignore_case,
-            "literal_whitespace": literal_ws,
-            "matches": total,
-            "allow_multiple": True,
-            "hits": report_hits,
+    def hit_to_report(hit: HighlightHit) -> Dict[str, Any]:
+        return {
+            "page_index": hit.page_index,
+            "page_number": hit.page_number,
+            "start": hit.start,
+            "end": hit.end,
+            "rects": [(x0, y0, x1, y1) for (x0, y0, x1, y1) in hit.rects],
+            "label": hit.label,
+            "color": hit.color,
         }
-        if prog_used:
-            aggregate_item.update(
-                {
-                    "progressive_search": True,
-                    "progressive_kmax": progressive_kmax,
-                    "progressive_max_gap_chars": progressive_gap,
-                }
-            )
-        if select_shortest:
-            aggregate_item["select_shortest"] = True
-        aggregate["items"].append(aggregate_item)
 
-    # Emit report if requested
+    with highlighter:
+        for idx, item in enumerate(recipe_items):
+            text = item.get("text") or item.get("pattern")
+            if not text:
+                print(f"[INFO] recipe item {idx}: missing 'text'/'pattern' field; skipping", file=sys.stderr)
+                aggregate["items"].append({"index": idx, "matches": 0, "skipped": True})
+                continue
+
+            label = item.get("label") if item.get("label") is not None else default_label
+            color_value = item.get("color")
+            color_input: ColorInput = color_value if color_value is not None else default_color_rgb
+            color_rgb = _parse_color(color_input) if color_input is not None else _color_to_rgb("yellow")
+            opacity = float(item.get("opacity", default_opacity))
+            ignore_case = bool(item.get("ignore_case", True))
+            literal_ws = bool(item.get("literal_whitespace", False))
+            regex = bool(item.get("regex", False))
+            progressive = bool(item.get("progressive", True))
+            progressive_kmax = int(item.get("progressive_kmax", 3))
+            progressive_gap = int(item.get("progressive_max_gap_chars", 200))
+            progressive_min_words = int(item.get("progressive_min_total_words", 3))
+            select_shortest = bool(item.get("select_shortest", True))
+            allow_multiple = bool(item.get("allow_multiple", True))
+
+            try:
+                outcome = highlighter.highlight_text(
+                    str(text),
+                    color=color_input,
+                    label=label,
+                    allow_multiple=allow_multiple,
+                    ignore_case=ignore_case,
+                    literal_whitespace=literal_ws,
+                    regex=regex,
+                    progressive=progressive,
+                    progressive_kmax=progressive_kmax,
+                    progressive_max_gap_chars=progressive_gap,
+                    progressive_min_total_words=progressive_min_words,
+                    progressive_select_shortest=select_shortest,
+                    opacity=opacity,
+                    dry_run=dry_run,
+                )
+            except RuntimeError as exc:
+                print(f"[ERROR] failed to highlight item {idx}: {exc}", file=sys.stderr)
+                return EXIT_ERROR
+
+            if outcome.matches == 0:
+                overall_not_found = True
+                print(f"[INFO] recipe item {idx}: no matches found", file=sys.stderr)
+            if outcome.blocked:
+                overall_multiple_blocked = True
+
+            aggregate_item: dict[str, Any] = {
+                "index": idx,
+                "query": str(text),
+                "pattern": str(text) if regex else None,
+                "regex": regex,
+                "ignore_case": ignore_case,
+                "literal_whitespace": literal_ws,
+                "matches": outcome.matches,
+                "allow_multiple": allow_multiple,
+                "hits": [hit_to_report(hit) for hit in outcome.hits],
+            }
+            if progressive:
+                aggregate_item.update(
+                    {
+                        "progressive_search": True,
+                        "progressive_kmax": progressive_kmax,
+                        "progressive_max_gap_chars": progressive_gap,
+                        "progressive_min_total_words": progressive_min_words,
+                    }
+                )
+            if select_shortest:
+                aggregate_item["select_shortest"] = True
+            aggregate["items"].append(aggregate_item)
+
+        if not dry_run:
+            try:
+                saved_outcome = highlighter.save(effective_out_path)
+            except RuntimeError as exc:
+                print(f"[ERROR] {exc}", file=sys.stderr)
+                return EXIT_ERROR
+            aggregate["output"] = saved_outcome.saved_path.as_posix() if saved_outcome.saved_path else effective_out_path.as_posix()
+            print(f"[OK] saved: {aggregate['output']}", file=sys.stderr)
+
     if report:
-        # If requested, emit a single-item compatible report format for CLI single mode
-        if compat_single_report and len(aggregate["items"]) == 1:
+        if compat_single_report and len(aggregate.get("items", [])) == 1:
             it = aggregate["items"][0]
-            m = it.get("matches", 0)
-            allow_multiple = True
-            exit_code_preview = EXIT_NOT_FOUND if m == 0 else EXIT_OK
+            matches = it.get("matches", 0)
+            exit_code_preview = EXIT_NOT_FOUND if matches == 0 else EXIT_OK
             payload = {
                 "input": aggregate["input"],
                 "output": aggregate["output"],
-                "matches": m,
+                "matches": matches,
                 "exit_code": exit_code_preview,
-                "allow_multiple": allow_multiple,
+                "allow_multiple": it.get("allow_multiple", True),
                 "dry_run": bool(dry_run),
                 "hits": it.get("hits", []),
             }
@@ -758,29 +1068,6 @@ def process_recipe(
             print(json.dumps(payload, ensure_ascii=False))
         else:
             print(json.dumps(aggregate, ensure_ascii=False))
-
-    # Save if not dry_run
-    try:
-        if not dry_run:
-            if out_path is None:
-                out_path = pdf_path.with_suffix(".highlighted.pdf")
-            try:
-                same_target = out_path.resolve() == pdf_path.resolve()
-            except Exception:
-                same_target = out_path.as_posix() == pdf_path.as_posix()
-            if same_target:
-                print(
-                    "[ERROR] refusing to overwrite input. Always write to a new file. Specify a different -o/--output.",
-                    file=sys.stderr,
-                )
-                return EXIT_ERROR
-            doc.save(out_path.as_posix(), garbage=4, deflate=True)
-            print(f"[OK] saved: {out_path}", file=sys.stderr)
-    except Exception as e:  # pragma: no cover - I/O
-        print(f"[ERROR] failed to save PDF: {e}", file=sys.stderr)
-        return EXIT_ERROR
-    finally:
-        doc.close()
 
     if overall_not_found:
         return EXIT_NOT_FOUND

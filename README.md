@@ -235,6 +235,85 @@ Additional notes
 - `page_index` is zero-based; `page_number` is one-based.
 - `start`/`end` are indices into the normalized text stream of a page.
 
+## Library API
+
+`pdfhl` now exposes a lightweight importable API for scripting.
+
+Highlight a single phrase and save in one call:
+
+```python
+from pathlib import Path
+from pdfhl import highlight_text
+
+outcome = highlight_text(
+    Path("paper.pdf"),
+    "threats to validity",
+    output=Path("paper.marked.pdf"),
+    color="#ffeb3b",
+    label="Important",
+)
+print(outcome.matches, outcome.saved_path)
+```
+
+For batch scenarios, open a document once and apply multiple queries:
+
+```python
+from pdfhl import PdfHighlighter
+
+with PdfHighlighter.open("paper.pdf") as hl:
+    hl.highlight_text("introduction", color="mint")
+    hl.highlight_text("findings", color="violet", progressive_select_shortest=False)
+    summary = hl.save("paper.highlighted.pdf")
+
+print(summary.matches)
+```
+
+Context managers are optional. You can manage the lifecycle explicitly if you prefer:
+
+```python
+from pdfhl import PdfHighlighter
+
+hl = PdfHighlighter.open("paper.pdf")
+try:
+    hl.highlight_text("abstract", color="#ff9800", label="Abstract")
+    hl.highlight_text("future work", allow_multiple=False)
+    outcome = hl.save("paper.highlighted.pdf")
+finally:
+    hl.close()
+
+print(outcome.matches)
+```
+
+### `highlight_text` arguments
+
+`pdfhl.highlight_text()` returns a `HighlightOutcome` and accepts the following top-level parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pdf_path` | `str | Path` | — | Source PDF to read. |
+| `text` | `str` | — | Query to search and highlight. |
+| `output` | `Path | None` | `None` | Destination PDF; defaults to `<input>.highlighted.pdf` when omitted. |
+| `dry_run` | `bool` | `False` | Return matches without modifying or saving the PDF. |
+
+`PdfHighlighter.highlight_text()` shares the same keyword arguments below; the standalone function forwards them as `**kwargs`.
+
+| Keyword | Type | Default | Description |
+|---------|------|---------|-------------|
+| `color` | `str | Sequence[float] | None` | `"#ffeb3b"` | Highlight color. Accepts named presets (`yellow`, `mint`, `violet`, `red`, `green`, `blue`), `#RRGGBB`, or three floats in 0..1 (tuple/list or comma string). |
+| `label` | `str | None` | `None` | Annotation title/content shown by PDF viewers; leave `None` to omit. |
+| `allow_multiple` | `bool` | `True` | If `False`, only the first match is highlighted. |
+| `ignore_case` | `bool` | `True` | Case-insensitive matching when `True`. |
+| `literal_whitespace` | `bool` | `False` | Treat the query’s whitespace literally when building regex patterns. |
+| `regex` | `bool` | `False` | Interpret `text` as a regex pattern instead of a literal phrase. |
+| `progressive` | `bool` | `True` | Use tolerant progressive search (`True`) or literal regex search (`False`). |
+| `progressive_kmax` | `int` | `3` | Maximum subword chunk size for progressive search. |
+| `progressive_max_gap_chars` | `int` | `200` | Max allowed character gap between progressive segments. |
+| `progressive_min_total_words` | `int` | `3` | Minimum matched subwords required when using progressive search. |
+| `progressive_select_shortest` | `bool` | `True` | Select global best match per query (`True`) or keep all ranges (`False`). |
+| `opacity` | `float` | `0.3` | Highlight opacity (0..1). |
+| `dry_run` | `bool` | `False` | Inspect matches without applying annotations (same effect as the top-level flag on the free function). |
+| `page_filter` | `Callable[[PageInfo], bool] | None` | `None` | Optional filter to restrict search to specific pages. |
+
 ## Development
 
 ### Running Tests

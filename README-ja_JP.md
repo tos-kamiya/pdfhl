@@ -237,6 +237,85 @@ pdfhl PDF [--text TEXT | --recipe JSON] [options]
 - `page_index` は0ベース、 `page_number` は1ベースです。
 - `start`/`end` は、ページの正規化されたテキストストリームへのインデックスです。
 
+## ライブラリ API
+
+`pdfhl` は Python から直接呼び出せる軽量な API を提供します。
+
+単一のフレーズを 1 回の呼び出しでハイライトして保存:
+
+```python
+from pathlib import Path
+from pdfhl import highlight_text
+
+outcome = highlight_text(
+    Path("paper.pdf"),
+    "脅威",
+    output=Path("paper.marked.pdf"),
+    color="#ffeb3b",
+    label="重要",
+)
+print(outcome.matches, outcome.saved_path)
+```
+
+同じ PDF に複数のクエリをバッチ適用:
+
+```python
+from pdfhl import PdfHighlighter
+
+with PdfHighlighter.open("paper.pdf") as hl:
+    hl.highlight_text("序論", color="mint")
+    hl.highlight_text("結果", color="violet", progressive_select_shortest=False)
+    summary = hl.save("paper.highlighted.pdf")
+
+print(summary.matches)
+```
+
+`with` を使わずにライフサイクルを明示的に管理することもできます:
+
+```python
+from pdfhl import PdfHighlighter
+
+hl = PdfHighlighter.open("paper.pdf")
+try:
+    hl.highlight_text("要旨", color="#ff9800", label="Abstract")
+    hl.highlight_text("今後の課題", allow_multiple=False)
+    outcome = hl.save("paper.highlighted.pdf")
+finally:
+    hl.close()
+
+print(outcome.matches)
+```
+
+### `highlight_text` の引数
+
+`pdfhl.highlight_text()` は `HighlightOutcome` を返し、次のトップレベル引数を受け取ります。
+
+| パラメータ | 型 | 既定値 | 説明 |
+|------------|----|--------|------|
+| `pdf_path` | `str | Path` | — | 読み込む PDF のパス。 |
+| `text` | `str` | — | 検索してハイライトする語句。 |
+| `output` | `Path | None` | `None` | 出力 PDF のパス。未指定のときは `<input>.highlighted.pdf`。 |
+| `dry_run` | `bool` | `False` | PDF を変更せず、マッチ結果だけ確認。 |
+
+`PdfHighlighter.highlight_text()` も同じキーワード引数を受け取り、スタンドアロン関数は `**kwargs` として伝播します。
+
+| キーワード | 型 | 既定値 | 説明 |
+|-------------|----|--------|------|
+| `color` | `str | Sequence[float] | None` | `"#ffeb3b"` | ハイライト色。`yellow`/`mint`/`violet`/`red`/`green`/`blue` のプリセット、`#RRGGBB`、または 0..1 の浮動小数 3 要素を指定可能。 |
+| `label` | `str | None` | `None` | PDF ビューアに表示される注釈タイトル/本文。省略時は空欄。 |
+| `allow_multiple` | `bool` | `True` | `False` にすると最初のマッチだけ適用。 |
+| `ignore_case` | `bool` | `True` | 大文字小文字を無視して検索。 |
+| `literal_whitespace` | `bool` | `False` | 正規表現生成時にクエリの空白をそのまま扱う。 |
+| `regex` | `bool` | `False` | `text` を正規表現として解釈。 |
+| `progressive` | `bool` | `True` | 寛容なプログレッシブ検索を使う（`False` でリテラル検索）。 |
+| `progressive_kmax` | `int` | `3` | プログレッシブ検索での最大チャンク長。 |
+| `progressive_max_gap_chars` | `int` | `200` | セグメント間の許容ギャップ（文字数）。 |
+| `progressive_min_total_words` | `int` | `3` | プログレッシブ検索時に必要な最小サブワード数。 |
+| `progressive_select_shortest` | `bool` | `True` | ドキュメント全体で最もコンパクトなマッチを選択。`False` で全マッチ。 |
+| `opacity` | `float` | `0.3` | ハイライトの不透明度 (0..1)。 |
+| `dry_run` | `bool` | `False` | アノテーションを適用せずマッチだけ確認（スタンドアロン関数の `dry_run` と同等）。 |
+| `page_filter` | `Callable[[PageInfo], bool] | None` | `None` | 検索対象のページを絞り込むフィルタ。 |
+
 ## 開発
 
 ### テストの実行
