@@ -46,7 +46,7 @@ pdfhl-cli input.pdf --text "Deep Learning" -o output.pdf
 フレーズのすべての出現箇所をハイライトします：
 
 ```bash
-pdfhl-cli input.pdf --text "Deep Learning" --all-matches -o output.pdf
+pdfhl-cli input.pdf --text "Deep Learning" --all -o output.pdf
 ```
 
 ハイライトのスタイルを設定し、ラベルを追加します：
@@ -113,8 +113,8 @@ pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
 **共通オプション**
 - `--ignore-case` / `--case-sensitive`
   - デフォルト：大文字と小文字を区別しません。
-- `--shortest` / `--all-matches` / `--error-on-multiple`
-  - `SelectionMode` を制御します。デフォルトは `--shortest`（最良のマッチ）。`--all-matches` はすべてをハイライトし、`--error-on-multiple` は複数マッチ時にエラーとします。
+- `--best` / `--all` / `--single`
+  - `SelectionMode` を制御します。デフォルトは `--best`（最良のマッチ）。`--all` はすべてをハイライトし、`--single` は複数マッチ時にエラーとします。
 - `--dry-run`
   - 検索のみを行い、出力ファイルを書き込みません。
 - `-o, --output PATH`
@@ -167,7 +167,7 @@ pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
 **アイテムごとのフィールド：**
 - `text` または `pattern` (string, 必須): 検索するフレーズ。
 - `ignore_case` (bool, デフォルト `true`): 大文字と小文字を区別しない検索を実行するかどうか。
-- `select_shortest` (bool, デフォルト `true`): `true`の場合、最良の単一マッチのみをハイライトします。`false`の場合、見つかったすべてのマッチをハイライトします（`--all-matches`と同等）。
+- `select_shortest` (bool, デフォルト `true`): `true`の場合、最良の単一マッチのみをハイライトします。`false`の場合、見つかったすべてのマッチをハイライトします（`--all`と同等）。
 - `label` (string | null): 注釈ラベル。
 - `color` (string | null): 色名、16進数、または `r,g,b` の浮動小数点値。
 - `opacity` (float | null): ハイライトの不透明度（0..1）。設定されていない場合はCLIのデフォルト値が使用されます。

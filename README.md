@@ -46,7 +46,7 @@ pdfhl-cli input.pdf --text "Deep Learning" -o output.pdf
 Highlight all occurrences of a phrase:
 
 ```bash
-pdfhl-cli input.pdf --text "Deep Learning" --all-matches -o output.pdf
+pdfhl-cli input.pdf --text "Deep Learning" --all -o output.pdf
 ```
 
 Style the highlight and add a label:
@@ -113,8 +113,8 @@ pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
 **Common Options**
 - `--ignore-case` / `--case-sensitive`
   - Default: ignore case.
-- `--shortest` / `--all-matches` / `--error-on-multiple`
-  - Controls match selection via `SelectionMode`. Default is `--shortest` (best match). `--all-matches` keeps every match. `--error-on-multiple` fails if more than one match is found.
+- `--best` / `--all` / `--single`
+  - Controls match selection via `SelectionMode`. Default is `--best` (best match). `--all` keeps every match. `--single` fails if more than one match is found.
 - `--dry-run`
   - Search only; do not write an output file.
 - `-o, --output PATH`
@@ -167,7 +167,7 @@ You can pass either a top-level array of items or an object with an `items: [...
 **Per-item fields:**
 - `text` or `pattern` (string, required): The phrase to search for.
 - `ignore_case` (bool, default `true`): Whether to perform a case-insensitive search.
-- `select_shortest` (bool, default `true`): If `true`, highlights only the single best match. If `false`, highlights all found matches (equivalent to `--all-matches`).
+- `select_shortest` (bool, default `true`): If `true`, highlights only the single best match. If `false`, highlights all found matches (equivalent to `--all`).
 - `label` (string | null): Annotation label.
 - `color` (string | null): Color name, hex, or `r,g,b` float values.
 - `opacity` (float | null): Highlight opacity (0..1). Falls back to the CLI default if not set.

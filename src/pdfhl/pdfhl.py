@@ -1219,24 +1219,24 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     # Selection mode controls
     sel = p.add_mutually_exclusive_group()
     sel.add_argument(
-        "--shortest",
+        "--best",
         dest="selection_mode",
         action="store_const",
         const="best",
         help="Select the best matching range (default)",
     )
     sel.add_argument(
-        "--all-matches",
+        "--all",
         dest="selection_mode",
         action="store_const",
         const="all",
         help="Highlight all matching ranges",
     )
     sel.add_argument(
-        "--error-on-multiple",
+        "--single",
         dest="selection_mode",
         action="store_const",
-        const="error",
+        const="single",
         help="Fail if multiple matches are found",
     )
     p.add_argument("--dry-run", action="store_true", help="Search only; do not write output")
