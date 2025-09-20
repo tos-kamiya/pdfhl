@@ -261,11 +261,12 @@ For batch scenarios, open a document once and apply multiple queries:
 from pdfhl import PdfHighlighter
 
 with PdfHighlighter.open("examples/sample.pdf") as hl:
-    hl.highlight_text("pdfhl sample document", color="mint")
-    hl.highlight_text("try highlight_text", color="violet", progressive_select_shortest=False)
+    single = hl.highlight_text("highlight_text", allow_multiple=False, dry_run=True)
+    multi = hl.highlight_text("highlight_text", color="violet", allow_multiple=True)
     summary = hl.save("examples/sample.highlighted.pdf")
 
-print(summary.matches)
+print(single.matches, single.blocked)
+print(multi.matches, multi.blocked)
 ```
 
 Context managers are optional. You can manage the lifecycle explicitly if you prefer:
@@ -275,8 +276,8 @@ from pdfhl import PdfHighlighter
 
 hl = PdfHighlighter.open("examples/sample.pdf")
 try:
-    hl.highlight_text("pdfhl sample document", color="#ff9800", label="Sample")
-    hl.highlight_text("highlight_text", allow_multiple=False)
+    hl.highlight_text("multiple times", color="#ff9800", label="Sample")
+    hl.highlight_text("pdfhl sample document", allow_multiple=False)
     outcome = hl.save("examples/sample.highlighted.pdf")
 finally:
     hl.close()

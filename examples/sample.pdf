@@ -10,9 +10,14 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
 endobj
 4 0 obj
-<< /Length 98 >>
+<< /Length 159 >>
 stream
-BT /F1 18 Tf 72 720 Td (pdfhl sample document) Tj 0 -24 Td (Use this to try highlight_text.) Tj ET
+BT
+/F1 18 Tf
+72 720 Td (pdfhl sample document) Tj
+0 -24 Td (Use this to try highlight_text.) Tj
+0 -24 Td (You can highlight_text once or multiple times.) Tj
+ET
 endstream
 endobj
 5 0 obj
@@ -25,9 +30,9 @@ xref
 0000000064 00000 n 
 0000000121 00000 n 
 0000000247 00000 n 
-0000000395 00000 n 
+0000000457 00000 n 
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-465
+527
 %%EOF
