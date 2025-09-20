@@ -275,7 +275,7 @@ from pdfhl import PdfHighlighter, SelectionMode
 hl = PdfHighlighter.open("examples/sample.pdf")
 try:
     hl.highlight_text("multiple times", color="#ff9800", label="Sample", selection_mode=SelectionMode.ALL)
-    hl.highlight_text("pdfhl sample document", selection_mode=SelectionMode.ERROR)
+    hl.highlight_text("pdfhl sample document", selection_mode=SelectionMode.SINGLE)
     outcome = hl.save("examples/sample.highlighted.pdf")
 finally:
     hl.close()
