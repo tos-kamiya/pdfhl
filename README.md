@@ -19,19 +19,19 @@ While you can of course run `pdfhl` manually, its main purpose is to serve as a 
 
 ## Installation
 
-Install via pipx from GitHub (recommended):
+Install via pipx from GitHub (recommended). Append `[cli]` to enable the command-line entry point:
 
 ```bash
-pipx install git+https://github.com/tos-kamiya/pdfhl@v0.3.0
+pipx install "git+https://github.com/tos-kamiya/pdfhl@v0.3.0#egg=pdfhl[cli]"
 ```
 
 To track the latest main branch instead of the tagged release:
 
 ```bash
-pipx install --force git+https://github.com/tos-kamiya/pdfhl
+pipx install --force "git+https://github.com/tos-kamiya/pdfhl#egg=pdfhl[cli]"
 ```
 
-Requires Python 3.10+. pipx installs into an isolated environment and exposes the `pdfhl` CLI on your PATH. To upgrade later, rerun the same `pipx install` command with `--force`.
+Requires Python 3.10+. Without `[cli]`, the library installs without the `pdfhl` console script.
 
 `pdfhl` uses `google/mt5-base` for subword segmentation by default. The Python packages `transformers` and `sentencepiece` are declared as dependencies and will be installed automatically. For offline environments, pre-download the model and pass `--mt5-model /path/to/mt5-base` (see below).
 

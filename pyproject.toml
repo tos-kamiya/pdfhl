@@ -25,8 +25,11 @@ dependencies = [
   "sentencepiece>=0.1.99",
 ]
 
+[project.optional-dependencies]
+cli = []
+
 [project.scripts]
-pdfhl = "pdfhl.pdfhl:main"
+pdfhl = { callable = "pdfhl.pdfhl:main", extras = ["cli"] }
 
 [tool.hatch.version]
 path = "src/pdfhl/__about__.py"

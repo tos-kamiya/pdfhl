@@ -19,21 +19,21 @@
 
 ## インストール
 
-推奨: GitHub から pipx でインストールします。
+推奨: GitHub から pipx でインストールします。CLI を利用する場合は `[cli]` を付与してください。
 
-安定版タグ（v0.2.0）をインストール:
+安定版タグ（v0.3.0）をインストール:
 
 ```bash
-pipx install git+https://github.com/tos-kamiya/pdfhl@v0.3.0
+pipx install "git+https://github.com/tos-kamiya/pdfhl@v0.3.0#egg=pdfhl[cli]"
 ```
 
 タグではなく最新の main ブランチを使う場合:
 
 ```bash
-pipx install --force git+https://github.com/tos-kamiya/pdfhl
+pipx install --force "git+https://github.com/tos-kamiya/pdfhl#egg=pdfhl[cli]"
 ```
 
-要件: Python 3.10+。pipx は隔離された環境にインストールし、`pdfhl` CLI を PATH に公開します。後からアップグレードする場合は、同じ `pipx install` コマンドを `--force` 付きで再実行してください。
+要件: Python 3.10+。`[cli]` を省略するとライブラリのみがインストールされ、`pdfhl` コマンドは作成されません。
 
 既定でサブワード分割に `google/mt5-base` を使用します。Python パッケージ `transformers` と `sentencepiece` は依存関係として自動インストールされます。オフライン環境では、あらかじめモデルを取得してローカルパスを `--mt5-model /path/to/mt5-base` で指定してください（後述）。
 
