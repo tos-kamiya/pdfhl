@@ -62,7 +62,7 @@ ColorInput = str | Sequence[float] | None
 
 
 class SelectionMode(str, Enum):
-    ERROR = "error"
+    SINGLE = "single"
     BEST = "best"
     ALL = "all"
 
@@ -71,30 +71,19 @@ class MultipleMatchesError(RuntimeError):
     """Raised when selection mode forbids multiple matches but more were found."""
 
 
-_SELECTION_ALIASES = {
-    "error": SelectionMode.ERROR,
-    "error_on_multiple": SelectionMode.ERROR,
-    "stop_on_multiple": SelectionMode.ERROR,
-    "best": SelectionMode.BEST,
-    "shortest": SelectionMode.BEST,
-    "best_only": SelectionMode.BEST,
-    "single": SelectionMode.BEST,
-    "all": SelectionMode.ALL,
-    "all_matches": SelectionMode.ALL,
-    "all-matches": SelectionMode.ALL,
-}
-
-
-def _coerce_selection_mode(value: SelectionMode | str | None) -> SelectionMode:
+def _parse_selection_mode(value: SelectionMode | str | None, *, default: SelectionMode = SelectionMode.BEST) -> SelectionMode:
+    if value is None:
+        return default
     if isinstance(value, SelectionMode):
         return value
-    if value is None:
-        return SelectionMode.BEST
     key = str(value).lower().replace(" ", "_").replace("-", "_")
-    try:
-        return _SELECTION_ALIASES[key]
-    except KeyError as exc:
-        raise ValueError(f"unknown selection mode: {value}") from exc
+    if key in {"single", "error", "error_on_multiple", "stop_on_multiple"}:
+        return SelectionMode.SINGLE
+    if key in {"best", "shortest", "best_only"}:
+        return SelectionMode.BEST
+    if key in {"all", "all_matches"}:
+        return SelectionMode.ALL
+    raise ValueError(f"unknown selection mode: {value}")
 
 
 class PdfHighlighter:
@@ -144,8 +133,7 @@ class PdfHighlighter:
         *,
         color: ColorInput = "#ffeb3b",
         label: str | None = None,
-        selection_mode: SelectionMode | str | None = None,
-        allow_multiple: bool | None = None,
+        selection_mode: SelectionMode = SelectionMode.BEST,
         ignore_case: bool = True,
         literal_whitespace: bool = False,
         regex: bool = False,
@@ -153,7 +141,6 @@ class PdfHighlighter:
         progressive_kmax: int = 3,
         progressive_max_gap_chars: int = 200,
         progressive_min_total_words: int = 3,
-        progressive_select_shortest: bool | None = None,
         opacity: float = 0.3,
         dry_run: bool = False,
         page_filter: Callable[[PageInfo], bool] | None = None,
@@ -166,19 +153,11 @@ class PdfHighlighter:
         color_rgb = _parse_color(color) if color is not None else _color_to_rgb("yellow")
         matches_by_page: Dict[int, List[Tuple[int, int]]] = {}
 
-        mode: SelectionMode | None = None
-        if selection_mode is not None:
-            mode = _coerce_selection_mode(selection_mode)
-        elif progressive_select_shortest is not None:
-            mode = SelectionMode.BEST if progressive_select_shortest else SelectionMode.ALL
-        elif allow_multiple is not None:
-            mode = SelectionMode.ALL if allow_multiple else SelectionMode.BEST
-        if mode is None:
-            mode = SelectionMode.BEST
+        if not isinstance(selection_mode, SelectionMode):
+            raise TypeError("selection_mode must be a SelectionMode value")
 
+        mode = selection_mode
         select_shortest = mode is SelectionMode.BEST
-        if mode is SelectionMode.ERROR:
-            select_shortest = False
 
         if progressive:
             total, matches_by_page = _find_progressive_matches_by_page(
@@ -215,7 +194,7 @@ class PdfHighlighter:
         if not ordered:
             return HighlightOutcome(matches=0, hits=[], blocked=False, not_found=True, dry_run=dry_run)
 
-        if mode is SelectionMode.ERROR and len(ordered) > 1:
+        if mode is SelectionMode.SINGLE and len(ordered) > 1:
             raise MultipleMatchesError(f"multiple matches found for '{query}'")
 
         if mode is SelectionMode.BEST and len(ordered) > 1:
@@ -1070,7 +1049,6 @@ def process_recipe(
                     progressive_kmax=progressive_kmax,
                     progressive_max_gap_chars=progressive_gap,
                     progressive_min_total_words=progressive_min_words,
-                    progressive_select_shortest=None,
                     opacity=opacity,
                     dry_run=dry_run,
                 )
