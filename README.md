@@ -237,7 +237,7 @@ Additional notes
 
 ## Library API
 
-`pdfhl` now exposes a lightweight importable API for scripting.
+`pdfhl` now exposes a lightweight importable API for scripting. A tiny sample PDF is bundled at `examples/sample.pdf` so you can run the snippets below immediately.
 
 Highlight a single phrase and save in one call:
 
@@ -246,11 +246,11 @@ from pathlib import Path
 from pdfhl import highlight_text
 
 outcome = highlight_text(
-    Path("paper.pdf"),
-    "threats to validity",
-    output=Path("paper.marked.pdf"),
+    Path("examples/sample.pdf"),
+    "pdfhl sample document",
+    output=Path("examples/sample.highlighted.pdf"),
     color="#ffeb3b",
-    label="Important",
+    label="Example",
 )
 print(outcome.matches, outcome.saved_path)
 ```
@@ -260,10 +260,10 @@ For batch scenarios, open a document once and apply multiple queries:
 ```python
 from pdfhl import PdfHighlighter
 
-with PdfHighlighter.open("paper.pdf") as hl:
-    hl.highlight_text("introduction", color="mint")
-    hl.highlight_text("findings", color="violet", progressive_select_shortest=False)
-    summary = hl.save("paper.highlighted.pdf")
+with PdfHighlighter.open("examples/sample.pdf") as hl:
+    hl.highlight_text("pdfhl sample document", color="mint")
+    hl.highlight_text("try highlight_text", color="violet", progressive_select_shortest=False)
+    summary = hl.save("examples/sample.highlighted.pdf")
 
 print(summary.matches)
 ```
@@ -273,11 +273,11 @@ Context managers are optional. You can manage the lifecycle explicitly if you pr
 ```python
 from pdfhl import PdfHighlighter
 
-hl = PdfHighlighter.open("paper.pdf")
+hl = PdfHighlighter.open("examples/sample.pdf")
 try:
-    hl.highlight_text("abstract", color="#ff9800", label="Abstract")
-    hl.highlight_text("future work", allow_multiple=False)
-    outcome = hl.save("paper.highlighted.pdf")
+    hl.highlight_text("pdfhl sample document", color="#ff9800", label="Sample")
+    hl.highlight_text("highlight_text", allow_multiple=False)
+    outcome = hl.save("examples/sample.highlighted.pdf")
 finally:
     hl.close()
 

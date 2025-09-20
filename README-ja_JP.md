@@ -239,7 +239,7 @@ pdfhl PDF [--text TEXT | --recipe JSON] [options]
 
 ## ライブラリ API
 
-`pdfhl` は Python から直接呼び出せる軽量な API を提供します。
+`pdfhl` は Python から直接呼び出せる軽量な API を提供します。`examples/sample.pdf` という小さな PDF を同梱しているので、以下のコードをそのまま試せます。
 
 単一のフレーズを 1 回の呼び出しでハイライトして保存:
 
@@ -248,11 +248,11 @@ from pathlib import Path
 from pdfhl import highlight_text
 
 outcome = highlight_text(
-    Path("paper.pdf"),
-    "脅威",
-    output=Path("paper.marked.pdf"),
+    Path("examples/sample.pdf"),
+    "pdfhl sample document",
+    output=Path("examples/sample.highlighted.pdf"),
     color="#ffeb3b",
-    label="重要",
+    label="Example",
 )
 print(outcome.matches, outcome.saved_path)
 ```
@@ -262,10 +262,10 @@ print(outcome.matches, outcome.saved_path)
 ```python
 from pdfhl import PdfHighlighter
 
-with PdfHighlighter.open("paper.pdf") as hl:
-    hl.highlight_text("序論", color="mint")
-    hl.highlight_text("結果", color="violet", progressive_select_shortest=False)
-    summary = hl.save("paper.highlighted.pdf")
+with PdfHighlighter.open("examples/sample.pdf") as hl:
+    hl.highlight_text("pdfhl sample document", color="mint")
+    hl.highlight_text("try highlight_text", color="violet", progressive_select_shortest=False)
+    summary = hl.save("examples/sample.highlighted.pdf")
 
 print(summary.matches)
 ```
@@ -275,11 +275,11 @@ print(summary.matches)
 ```python
 from pdfhl import PdfHighlighter
 
-hl = PdfHighlighter.open("paper.pdf")
+hl = PdfHighlighter.open("examples/sample.pdf")
 try:
-    hl.highlight_text("要旨", color="#ff9800", label="Abstract")
-    hl.highlight_text("今後の課題", allow_multiple=False)
-    outcome = hl.save("paper.highlighted.pdf")
+    hl.highlight_text("pdfhl sample document", color="#ff9800", label="Sample")
+    hl.highlight_text("highlight_text", allow_multiple=False)
+    outcome = hl.save("examples/sample.highlighted.pdf")
 finally:
     hl.close()
 
