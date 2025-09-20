@@ -113,8 +113,8 @@ pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
 **Common Options**
 - `--ignore-case` / `--case-sensitive`
   - Default: ignore case.
-- `--shortest` / `--all-matches`
-  - Controls selection. Default is `--shortest`, which finds the single best-scoring (most compact) match in the entire document. `--all-matches` highlights every valid match found.
+- `--shortest` / `--all-matches` / `--error-on-multiple`
+  - Controls match selection via `SelectionMode`. Default is `--shortest` (best match). `--all-matches` keeps every match. `--error-on-multiple` fails if more than one match is found.
 - `--dry-run`
   - Search only; do not write an output file.
 - `-o, --output PATH`
@@ -199,7 +199,7 @@ Additional notes
   "context": {
     "query": "...",
     "ignore_case": true,
-    "selection": "shortest"
+    "selection_mode": "best"
   }
 }
 ```
@@ -220,7 +220,7 @@ Additional notes
       "progressive_search": true,
       "progressive_kmax": 3,
       "progressive_max_gap_chars": 200,
-      "select_shortest": true
+      "selection_mode": "best"
     }
   ]
 }
@@ -238,7 +238,7 @@ Highlight a single phrase and save in one call:
 
 ```python
 from pathlib import Path
-from pdfhl import highlight_text
+from pdfhl import SelectionMode, highlight_text
 
 outcome = highlight_text(
     Path("examples/sample.pdf"),
@@ -246,6 +246,7 @@ outcome = highlight_text(
     output=Path("examples/sample.highlighted.pdf"),
     color="#ffeb3b",
     label="Example",
+    selection_mode=SelectionMode.BEST,
 )
 print(outcome.matches, outcome.saved_path)
 ```
@@ -253,11 +254,11 @@ print(outcome.matches, outcome.saved_path)
 For batch scenarios, open a document once and apply multiple queries:
 
 ```python
-from pdfhl import PdfHighlighter
+from pdfhl import PdfHighlighter, SelectionMode
 
 with PdfHighlighter.open("examples/sample.pdf") as hl:
-    single = hl.highlight_text("highlight_text", allow_multiple=False, dry_run=True)
-    multi = hl.highlight_text("highlight_text", color="violet", allow_multiple=True)
+    single = hl.highlight_text("highlight_text", selection_mode=SelectionMode.BEST, dry_run=True)
+    multi = hl.highlight_text("highlight_text", color="violet", selection_mode=SelectionMode.ALL)
     summary = hl.save("examples/sample.highlighted.pdf")
 
 print(single.matches, single.blocked)
@@ -267,12 +268,12 @@ print(multi.matches, multi.blocked)
 Context managers are optional. You can manage the lifecycle explicitly if you prefer:
 
 ```python
-from pdfhl import PdfHighlighter
+from pdfhl import PdfHighlighter, SelectionMode
 
 hl = PdfHighlighter.open("examples/sample.pdf")
 try:
-    hl.highlight_text("multiple times", color="#ff9800", label="Sample")
-    hl.highlight_text("pdfhl sample document", allow_multiple=False)
+    hl.highlight_text("multiple times", color="#ff9800", label="Sample", selection_mode=SelectionMode.ALL)
+    hl.highlight_text("pdfhl sample document", selection_mode=SelectionMode.ERROR)
     outcome = hl.save("examples/sample.highlighted.pdf")
 finally:
     hl.close()
@@ -297,7 +298,8 @@ print(outcome.matches)
 |---------|------|---------|-------------|
 | `color` | `str | Sequence[float] | None` | `"#ffeb3b"` | Highlight color. Accepts named presets (`yellow`, `mint`, `violet`, `red`, `green`, `blue`), `#RRGGBB`, or three floats in 0..1 (tuple/list or comma string). |
 | `label` | `str | None` | `None` | Annotation title/content shown by PDF viewers; leave `None` to omit. |
-| `allow_multiple` | `bool` | `True` | If `False`, only the first match is highlighted. |
+| `selection_mode` | `SelectionMode | str` | `SelectionMode.BEST` | Choose how to resolve multiple matches (`ERROR`, `BEST`, `ALL`). |
+| `allow_multiple` | `bool | None` | `None` | Legacy alias: `False` maps to `BEST`, `True` maps to `ALL`. Prefer `selection_mode`. |
 | `ignore_case` | `bool` | `True` | Case-insensitive matching when `True`. |
 | `literal_whitespace` | `bool` | `False` | Treat the query’s whitespace literally when building regex patterns. |
 | `regex` | `bool` | `False` | Interpret `text` as a regex pattern instead of a literal phrase. |
@@ -305,7 +307,7 @@ print(outcome.matches)
 | `progressive_kmax` | `int` | `3` | Maximum subword chunk size for progressive search. |
 | `progressive_max_gap_chars` | `int` | `200` | Max allowed character gap between progressive segments. |
 | `progressive_min_total_words` | `int` | `3` | Minimum matched subwords required when using progressive search. |
-| `progressive_select_shortest` | `bool | None` | `auto` | If omitted, defaults to `not allow_multiple`; set explicitly to force shortest (`True`) or all (`False`). |
+| `progressive_select_shortest` | `bool | None` | `None` | Legacy alias: `True` → `BEST`, `False` → `ALL`. Prefer `selection_mode`. |
 | `opacity` | `float` | `0.3` | Highlight opacity (0..1). |
 | `dry_run` | `bool` | `False` | Inspect matches without applying annotations (same effect as the top-level flag on the free function). |
 | `page_filter` | `Callable[[PageInfo], bool] | None` | `None` | Optional filter to restrict search to specific pages. |

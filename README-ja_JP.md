@@ -115,8 +115,8 @@ pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
 **共通オプション**
 - `--ignore-case` / `--case-sensitive`
   - デフォルト：大文字と小文字を区別しません。
-- `--shortest` / `--all-matches`
-  - 選択を制御します。デフォルトは`--shortest`で、文書全体で最もスコアの高い（最もコンパクトな）単一のマッチを検索します。`--all-matches`は、見つかったすべての有効なマッチをハイライトします。
+- `--shortest` / `--all-matches` / `--error-on-multiple`
+  - `SelectionMode` を制御します。デフォルトは `--shortest`（最良のマッチ）。`--all-matches` はすべてをハイライトし、`--error-on-multiple` は複数マッチ時にエラーとします。
 - `--dry-run`
   - 検索のみを行い、出力ファイルを書き込みません。
 - `-o, --output PATH`
@@ -201,7 +201,7 @@ pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
   "context": {
     "query": "...",
     "ignore_case": true,
-    "selection": "shortest"
+    "selection_mode": "best"
   }
 }
 ```
@@ -222,7 +222,7 @@ pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
       "progressive_search": true,
       "progressive_kmax": 3,
       "progressive_max_gap_chars": 200,
-      "select_shortest": true
+      "selection_mode": "best"
     }
   ]
 }
@@ -240,7 +240,7 @@ pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
 
 ```python
 from pathlib import Path
-from pdfhl import highlight_text
+from pdfhl import SelectionMode, highlight_text
 
 outcome = highlight_text(
     Path("examples/sample.pdf"),
@@ -248,6 +248,7 @@ outcome = highlight_text(
     output=Path("examples/sample.highlighted.pdf"),
     color="#ffeb3b",
     label="Example",
+    selection_mode=SelectionMode.BEST,
 )
 print(outcome.matches, outcome.saved_path)
 ```
@@ -255,11 +256,11 @@ print(outcome.matches, outcome.saved_path)
 同じ PDF に複数のクエリをバッチ適用:
 
 ```python
-from pdfhl import PdfHighlighter
+from pdfhl import PdfHighlighter, SelectionMode
 
 with PdfHighlighter.open("examples/sample.pdf") as hl:
-    single = hl.highlight_text("highlight_text", allow_multiple=False, dry_run=True)
-    multi = hl.highlight_text("highlight_text", color="violet", allow_multiple=True)
+    single = hl.highlight_text("highlight_text", selection_mode=SelectionMode.BEST, dry_run=True)
+    multi = hl.highlight_text("highlight_text", color="violet", selection_mode=SelectionMode.ALL)
     summary = hl.save("examples/sample.highlighted.pdf")
 
 print(single.matches, single.blocked)
@@ -269,12 +270,12 @@ print(multi.matches, multi.blocked)
 `with` を使わずにライフサイクルを明示的に管理することもできます:
 
 ```python
-from pdfhl import PdfHighlighter
+from pdfhl import PdfHighlighter, SelectionMode
 
 hl = PdfHighlighter.open("examples/sample.pdf")
 try:
-    hl.highlight_text("multiple times", color="#ff9800", label="Sample")
-    hl.highlight_text("pdfhl sample document", allow_multiple=False)
+    hl.highlight_text("multiple times", color="#ff9800", label="Sample", selection_mode=SelectionMode.ALL)
+    hl.highlight_text("pdfhl sample document", selection_mode=SelectionMode.ERROR)
     outcome = hl.save("examples/sample.highlighted.pdf")
 finally:
     hl.close()
@@ -299,7 +300,8 @@ print(outcome.matches)
 |-------------|----|--------|------|
 | `color` | `str | Sequence[float] | None` | `"#ffeb3b"` | ハイライト色。`yellow`/`mint`/`violet`/`red`/`green`/`blue` のプリセット、`#RRGGBB`、または 0..1 の浮動小数 3 要素を指定可能。 |
 | `label` | `str | None` | `None` | PDF ビューアに表示される注釈タイトル/本文。省略時は空欄。 |
-| `allow_multiple` | `bool` | `True` | `False` にすると最初のマッチだけ適用。 |
+| `selection_mode` | `SelectionMode | str` | `SelectionMode.BEST` | マッチ選択方法を指定します（`ERROR` / `BEST` / `ALL`）。 |
+| `allow_multiple` | `bool | None` | `None` | 旧オプション。`False` → `BEST`, `True` → `ALL` にマッピングされます。新規コードでは `selection_mode` を利用してください。 |
 | `ignore_case` | `bool` | `True` | 大文字小文字を無視して検索。 |
 | `literal_whitespace` | `bool` | `False` | 正規表現生成時にクエリの空白をそのまま扱う。 |
 | `regex` | `bool` | `False` | `text` を正規表現として解釈。 |
@@ -307,7 +309,7 @@ print(outcome.matches)
 | `progressive_kmax` | `int` | `3` | プログレッシブ検索での最大チャンク長。 |
 | `progressive_max_gap_chars` | `int` | `200` | セグメント間の許容ギャップ（文字数）。 |
 | `progressive_min_total_words` | `int` | `3` | プログレッシブ検索時に必要な最小サブワード数。 |
-| `progressive_select_shortest` | `bool | None` | `auto` | 省略時は `not allow_multiple` が適用されます。`True` で最短のみ、`False` で全マッチ。 |
+| `progressive_select_shortest` | `bool | None` | `None` | 旧オプション。`True` → `BEST`, `False` → `ALL` にマッピングされます。 |
 | `opacity` | `float` | `0.3` | ハイライトの不透明度 (0..1)。 |
 | `dry_run` | `bool` | `False` | アノテーションを適用せずマッチだけ確認（スタンドアロン関数の `dry_run` と同等）。 |
 | `page_filter` | `Callable[[PageInfo], bool] | None` | `None` | 検索対象のページを絞り込むフィルタ。 |

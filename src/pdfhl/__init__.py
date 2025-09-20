@@ -5,7 +5,14 @@
 # SPDX-License-Identifier: MIT
 
 from .__about__ import __version__
-from .pdfhl import HighlightHit, HighlightOutcome, PdfHighlighter, highlight_text
+from .pdfhl import (
+    HighlightHit,
+    HighlightOutcome,
+    MultipleMatchesError,
+    PdfHighlighter,
+    SelectionMode,
+    highlight_text,
+)
 
 # Backwards-friendly alias so callers can import either name.
 version = __version__
@@ -17,4 +24,6 @@ __all__ = [
     "highlight_text",
     "__version__",
     "version",
+    "SelectionMode",
+    "MultipleMatchesError",
 ]

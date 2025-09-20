@@ -6,6 +6,7 @@ import re
 import sys
 import unicodedata
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Sequence, Tuple
 
@@ -60,6 +61,42 @@ class HighlightOutcome:
 ColorInput = str | Sequence[float] | None
 
 
+class SelectionMode(str, Enum):
+    ERROR = "error"
+    BEST = "best"
+    ALL = "all"
+
+
+class MultipleMatchesError(RuntimeError):
+    """Raised when selection mode forbids multiple matches but more were found."""
+
+
+_SELECTION_ALIASES = {
+    "error": SelectionMode.ERROR,
+    "error_on_multiple": SelectionMode.ERROR,
+    "stop_on_multiple": SelectionMode.ERROR,
+    "best": SelectionMode.BEST,
+    "shortest": SelectionMode.BEST,
+    "best_only": SelectionMode.BEST,
+    "single": SelectionMode.BEST,
+    "all": SelectionMode.ALL,
+    "all_matches": SelectionMode.ALL,
+    "all-matches": SelectionMode.ALL,
+}
+
+
+def _coerce_selection_mode(value: SelectionMode | str | None) -> SelectionMode:
+    if isinstance(value, SelectionMode):
+        return value
+    if value is None:
+        return SelectionMode.BEST
+    key = str(value).lower().replace(" ", "_").replace("-", "_")
+    try:
+        return _SELECTION_ALIASES[key]
+    except KeyError as exc:
+        raise ValueError(f"unknown selection mode: {value}") from exc
+
+
 class PdfHighlighter:
     """Mutable PDF highlighting session supporting repeated queries."""
 
@@ -107,7 +144,8 @@ class PdfHighlighter:
         *,
         color: ColorInput = "#ffeb3b",
         label: str | None = None,
-        allow_multiple: bool = True,
+        selection_mode: SelectionMode | str | None = None,
+        allow_multiple: bool | None = None,
         ignore_case: bool = True,
         literal_whitespace: bool = False,
         regex: bool = False,
@@ -128,9 +166,19 @@ class PdfHighlighter:
         color_rgb = _parse_color(color) if color is not None else _color_to_rgb("yellow")
         matches_by_page: Dict[int, List[Tuple[int, int]]] = {}
 
-        select_shortest = progressive_select_shortest
-        if select_shortest is None:
-            select_shortest = not allow_multiple
+        mode: SelectionMode | None = None
+        if selection_mode is not None:
+            mode = _coerce_selection_mode(selection_mode)
+        elif progressive_select_shortest is not None:
+            mode = SelectionMode.BEST if progressive_select_shortest else SelectionMode.ALL
+        elif allow_multiple is not None:
+            mode = SelectionMode.ALL if allow_multiple else SelectionMode.BEST
+        if mode is None:
+            mode = SelectionMode.BEST
+
+        select_shortest = mode is SelectionMode.BEST
+        if mode is SelectionMode.ERROR:
+            select_shortest = False
 
         if progressive:
             total, matches_by_page = _find_progressive_matches_by_page(
@@ -167,7 +215,10 @@ class PdfHighlighter:
         if not ordered:
             return HighlightOutcome(matches=0, hits=[], blocked=False, not_found=True, dry_run=dry_run)
 
-        if not allow_multiple and len(ordered) > 1:
+        if mode is SelectionMode.ERROR and len(ordered) > 1:
+            raise MultipleMatchesError(f"multiple matches found for '{query}'")
+
+        if mode is SelectionMode.BEST and len(ordered) > 1:
             blocked = True
             ordered = ordered[:1]
 
@@ -792,6 +843,7 @@ def process_file(
         "regex": True,  # rx is already a compiled regex
         "ignore_case": bool(rx.flags & re.IGNORECASE),
         "literal_whitespace": False,
+        "selection_mode": (SelectionMode.ALL.value if bool(allow_multiple) else SelectionMode.BEST.value),
         "allow_multiple": bool(allow_multiple),
         "label": label,
         "color": color_rgb,
@@ -990,15 +1042,27 @@ def process_recipe(
             progressive_kmax = int(item.get("progressive_kmax", 3))
             progressive_gap = int(item.get("progressive_max_gap_chars", 200))
             progressive_min_words = int(item.get("progressive_min_total_words", 3))
-            select_shortest = bool(item.get("select_shortest", True))
-            allow_multiple = bool(item.get("allow_multiple", True))
+
+            selection_mode_value = item.get("selection_mode")
+            try:
+                if selection_mode_value is not None:
+                    selection_mode_obj = _coerce_selection_mode(selection_mode_value)
+                elif "select_shortest" in item:
+                    selection_mode_obj = SelectionMode.BEST if bool(item.get("select_shortest")) else SelectionMode.ALL
+                elif "allow_multiple" in item:
+                    selection_mode_obj = SelectionMode.ALL if bool(item.get("allow_multiple")) else SelectionMode.BEST
+                else:
+                    selection_mode_obj = SelectionMode.BEST
+            except ValueError as exc:
+                print(f"[ERROR] recipe item {idx}: {exc}", file=sys.stderr)
+                return EXIT_ERROR
 
             try:
                 outcome = highlighter.highlight_text(
                     str(text),
                     color=color_input,
                     label=label,
-                    allow_multiple=allow_multiple,
+                    selection_mode=selection_mode_obj,
                     ignore_case=ignore_case,
                     literal_whitespace=literal_ws,
                     regex=regex,
@@ -1006,10 +1070,27 @@ def process_recipe(
                     progressive_kmax=progressive_kmax,
                     progressive_max_gap_chars=progressive_gap,
                     progressive_min_total_words=progressive_min_words,
-                    progressive_select_shortest=select_shortest,
+                    progressive_select_shortest=None,
                     opacity=opacity,
                     dry_run=dry_run,
                 )
+            except MultipleMatchesError as exc:
+                overall_multiple_blocked = True
+                print(f"[ERROR] recipe item {idx}: {exc}", file=sys.stderr)
+                aggregate_item = {
+                    "index": idx,
+                    "query": str(text),
+                    "pattern": str(text) if regex else None,
+                    "regex": regex,
+                    "ignore_case": ignore_case,
+                    "literal_whitespace": literal_ws,
+                    "matches": 0,
+                    "selection_mode": selection_mode_obj.value,
+                    "error": "multiple_matches",
+                    "hits": [],
+                }
+                aggregate["items"].append(aggregate_item)
+                continue
             except RuntimeError as exc:
                 print(f"[ERROR] failed to highlight item {idx}: {exc}", file=sys.stderr)
                 return EXIT_ERROR
@@ -1028,9 +1109,13 @@ def process_recipe(
                 "ignore_case": ignore_case,
                 "literal_whitespace": literal_ws,
                 "matches": outcome.matches,
-                "allow_multiple": allow_multiple,
+                "selection_mode": selection_mode_obj.value,
                 "hits": [hit_to_report(hit) for hit in outcome.hits],
             }
+            if "allow_multiple" in item:
+                aggregate_item["allow_multiple"] = bool(item.get("allow_multiple"))
+            if "select_shortest" in item:
+                aggregate_item["select_shortest"] = bool(item.get("select_shortest"))
             if progressive:
                 aggregate_item.update(
                     {
@@ -1040,8 +1125,6 @@ def process_recipe(
                         "progressive_min_total_words": progressive_min_words,
                     }
                 )
-            if select_shortest:
-                aggregate_item["select_shortest"] = True
             aggregate["items"].append(aggregate_item)
 
         if not dry_run:
@@ -1064,6 +1147,7 @@ def process_recipe(
                 "matches": matches,
                 "exit_code": exit_code_preview,
                 "allow_multiple": it.get("allow_multiple", True),
+                "selection_mode": it.get("selection_mode"),
                 "dry_run": bool(dry_run),
                 "hits": it.get("hits", []),
             }
@@ -1140,10 +1224,29 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     case.add_argument("--ignore-case", dest="ignore_case", action="store_true", default=True, help="Case-insensitive search (default)")
     case.add_argument("--case-sensitive", dest="case_sensitive", action="store_true", help="Case-sensitive search")
 
-    # Selection mode: shortest vs all (mutually exclusive; default shortest)
+    # Selection mode controls
     sel = p.add_mutually_exclusive_group()
-    sel.add_argument("--shortest", dest="shortest", action="store_true", help="Select the shortest matching range (default)")
-    sel.add_argument("--all-matches", dest="all_matches", action="store_true", help="Highlight all matching ranges")
+    sel.add_argument(
+        "--shortest",
+        dest="selection_mode",
+        action="store_const",
+        const="best",
+        help="Select the best matching range (default)",
+    )
+    sel.add_argument(
+        "--all-matches",
+        dest="selection_mode",
+        action="store_const",
+        const="all",
+        help="Highlight all matching ranges",
+    )
+    sel.add_argument(
+        "--error-on-multiple",
+        dest="selection_mode",
+        action="store_const",
+        const="error",
+        help="Fail if multiple matches are found",
+    )
     p.add_argument("--dry-run", action="store_true", help="Search only; do not write output")
 
     # Output policy: always write to a new file
@@ -1208,6 +1311,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("[ERROR] --text/--pattern or --recipe is required.", file=sys.stderr)
         return EXIT_ERROR
 
+    # Determine selection mode
+    selection_mode_cli = getattr(ns, "selection_mode", None)
+    try:
+        selection_mode = _coerce_selection_mode(selection_mode_cli)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
     # Build a single-item recipe from CLI args and run through the common path
     items = [
         {
@@ -1216,7 +1327,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "label": ns.label,
             "color": ns.color,
             "opacity": float(ns.opacity),
-            "select_shortest": (False if getattr(ns, "all_matches", False) else True),
+            "selection_mode": selection_mode.value,
         }
     ]
 
@@ -1225,7 +1336,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     context = {
         "query": query,
         "ignore_case": ignore_case,
-        "selection": ("all" if getattr(ns, "all_matches", False) else "shortest"),
+        "selection_mode": selection_mode.value,
     }
 
     return process_recipe(
