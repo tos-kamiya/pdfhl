@@ -250,8 +250,10 @@ outcome = highlight_text(
     label="Example",
     selection_mode=SelectionMode.BEST,
 )
-print(outcome.matches, outcome.saved_path)
+print(outcome.highlight_count, outcome.segment_matches, outcome.saved_path)
 ```
+
+`outcome.highlight_count` は実際にハイライトされる範囲の件数、`outcome.segment_matches` はプログレッシブ検索による生のセグメント数を表します。
 
 同じ PDF に複数のクエリをバッチ適用:
 
@@ -263,8 +265,8 @@ with PdfHighlighter.open("examples/sample.pdf") as hl:
     multi = hl.highlight_text("highlight_text", color="violet", selection_mode=SelectionMode.ALL)
     summary = hl.save("examples/sample.highlighted.pdf")
 
-print(single.matches, single.blocked)
-print(multi.matches, multi.blocked)
+print(single.highlight_count, single.segment_matches)
+print(multi.highlight_count, multi.segment_matches)
 ```
 
 `with` を使わずにライフサイクルを明示的に管理することもできます:
@@ -280,7 +282,7 @@ try:
 finally:
     hl.close()
 
-print(outcome.matches)
+print(outcome.highlight_count, outcome.segment_matches)
 ```
 
 ### `highlight_text` の引数
@@ -300,8 +302,7 @@ print(outcome.matches)
 |-------------|----|--------|------|
 | `color` | `str | Sequence[float] | None` | `"#ffeb3b"` | ハイライト色。`yellow`/`mint`/`violet`/`red`/`green`/`blue` のプリセット、`#RRGGBB`、または 0..1 の浮動小数 3 要素を指定可能。 |
 | `label` | `str | None` | `None` | PDF ビューアに表示される注釈タイトル/本文。省略時は空欄。 |
-| `selection_mode` | `SelectionMode | str` | `SelectionMode.BEST` | マッチ選択方法を指定します（`ERROR` / `BEST` / `ALL`）。 |
-| `allow_multiple` | `bool | None` | `None` | 旧オプション。`False` → `BEST`, `True` → `ALL` にマッピングされます。新規コードでは `selection_mode` を利用してください。 |
+| `selection_mode` | `SelectionMode` | `SelectionMode.BEST` | マッチ選択方法を指定します（`SINGLE` / `BEST` / `ALL`）。 |
 | `ignore_case` | `bool` | `True` | 大文字小文字を無視して検索。 |
 | `literal_whitespace` | `bool` | `False` | 正規表現生成時にクエリの空白をそのまま扱う。 |
 | `regex` | `bool` | `False` | `text` を正規表現として解釈。 |
@@ -309,7 +310,6 @@ print(outcome.matches)
 | `progressive_kmax` | `int` | `3` | プログレッシブ検索での最大チャンク長。 |
 | `progressive_max_gap_chars` | `int` | `200` | セグメント間の許容ギャップ（文字数）。 |
 | `progressive_min_total_words` | `int` | `3` | プログレッシブ検索時に必要な最小サブワード数。 |
-| `progressive_select_shortest` | `bool | None` | `None` | 旧オプション。`True` → `BEST`, `False` → `ALL` にマッピングされます。 |
 | `opacity` | `float` | `0.3` | ハイライトの不透明度 (0..1)。 |
 | `dry_run` | `bool` | `False` | アノテーションを適用せずマッチだけ確認（スタンドアロン関数の `dry_run` と同等）。 |
 | `page_filter` | `Callable[[PageInfo], bool] | None` | `None` | 検索対象のページを絞り込むフィルタ。 |

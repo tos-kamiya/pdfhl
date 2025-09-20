@@ -49,13 +49,19 @@ class HighlightHit:
 
 @dataclass
 class HighlightOutcome:
-    matches: int
+    segment_matches: int
+    highlight_count: int
     hits: List[HighlightHit]
     blocked: bool = False
     not_found: bool = False
     saved_path: Path | None = None
     dry_run: bool = False
     report_payload: Dict[str, Any] | None = None
+
+    @property
+    def matches(self) -> int:
+        """Backward-compatible alias for segment-based match count."""
+        return self.segment_matches
 
 
 ColorInput = str | Sequence[float] | None
@@ -148,7 +154,7 @@ class PdfHighlighter:
         self._ensure_open()
         query = str(text)
         if not query:
-            return HighlightOutcome(matches=0, hits=[], not_found=True, dry_run=dry_run)
+            return HighlightOutcome(segment_matches=0, highlight_count=0, hits=[], not_found=True, dry_run=dry_run)
 
         color_rgb = _parse_color(color) if color is not None else _color_to_rgb("yellow")
         matches_by_page: Dict[int, List[Tuple[int, int]]] = {}
@@ -192,7 +198,7 @@ class PdfHighlighter:
                 ordered.append((pi, start, end))
 
         if not ordered:
-            return HighlightOutcome(matches=0, hits=[], blocked=False, not_found=True, dry_run=dry_run)
+            return HighlightOutcome(segment_matches=0, highlight_count=0, hits=[], blocked=False, not_found=True, dry_run=dry_run)
 
         if mode is SelectionMode.SINGLE and len(ordered) > 1:
             raise MultipleMatchesError(f"multiple matches found for '{query}'")
@@ -230,8 +236,11 @@ class PdfHighlighter:
             )
             applied_hits.append(hit)
 
+        unique_ranges = {(hit.page_index, hit.start, hit.end) for hit in applied_hits}
+
         outcome = HighlightOutcome(
-            matches=len(ordered),
+            segment_matches=len(ordered),
+            highlight_count=len(unique_ranges),
             hits=applied_hits,
             blocked=blocked,
             not_found=False,
@@ -271,8 +280,10 @@ class PdfHighlighter:
             raise RuntimeError(f"failed to save PDF: {exc}") from exc
 
         self._dirty = False
+        unique_ranges = {(hit.page_index, hit.start, hit.end) for hit in self._applied_hits}
         return HighlightOutcome(
-            matches=self._total_applied_matches,
+            segment_matches=self._total_applied_matches,
+            highlight_count=len(unique_ranges),
             hits=list(self._applied_hits),
             blocked=self._blocked_any,
             not_found=(self._total_applied_matches == 0),
@@ -1025,7 +1036,7 @@ def process_recipe(
             selection_mode_value = item.get("selection_mode")
             try:
                 if selection_mode_value is not None:
-                    selection_mode_obj = _coerce_selection_mode(selection_mode_value)
+                    selection_mode_obj = _parse_selection_mode(selection_mode_value)
                 elif "select_shortest" in item:
                     selection_mode_obj = SelectionMode.BEST if bool(item.get("select_shortest")) else SelectionMode.ALL
                 elif "allow_multiple" in item:
@@ -1063,6 +1074,7 @@ def process_recipe(
                     "ignore_case": ignore_case,
                     "literal_whitespace": literal_ws,
                     "matches": 0,
+                    "highlight_count": 0,
                     "selection_mode": selection_mode_obj.value,
                     "error": "multiple_matches",
                     "hits": [],
@@ -1086,7 +1098,8 @@ def process_recipe(
                 "regex": regex,
                 "ignore_case": ignore_case,
                 "literal_whitespace": literal_ws,
-                "matches": outcome.matches,
+                "matches": outcome.segment_matches,
+                "highlight_count": outcome.highlight_count,
                 "selection_mode": selection_mode_obj.value,
                 "hits": [hit_to_report(hit) for hit in outcome.hits],
             }
@@ -1123,6 +1136,7 @@ def process_recipe(
                 "input": aggregate["input"],
                 "output": aggregate["output"],
                 "matches": matches,
+                "highlight_count": it.get("highlight_count", matches),
                 "exit_code": exit_code_preview,
                 "allow_multiple": it.get("allow_multiple", True),
                 "selection_mode": it.get("selection_mode"),
@@ -1292,7 +1306,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Determine selection mode
     selection_mode_cli = getattr(ns, "selection_mode", None)
     try:
-        selection_mode = _coerce_selection_mode(selection_mode_cli)
+        selection_mode = _parse_selection_mode(selection_mode_cli)
     except ValueError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return EXIT_ERROR
