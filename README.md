@@ -22,7 +22,7 @@ While you can of course run `pdfhl-cli` manually, its main purpose is to serve a
 Install via pipx from GitHub (recommended):
 
 ```bash
-pipx install git+https://github.com/tos-kamiya/pdfhl@v0.3.0
+pipx install git+https://github.com/tos-kamiya/pdfhl@v0.4.0
 ```
 
 To track the latest main branch instead of the tagged release:

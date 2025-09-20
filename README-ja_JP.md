@@ -21,10 +21,8 @@
 
 推奨: GitHub から pipx でインストールします。
 
-安定版タグ（v0.3.0）をインストール:
-
 ```bash
-pipx install git+https://github.com/tos-kamiya/pdfhl@v0.3.0
+pipx install git+https://github.com/tos-kamiya/pdfhl@v0.4.0
 ```
 
 タグではなく最新の main ブランチを使う場合:

@@ -34,31 +34,28 @@
 
 ## Session & Design Log (`dev-notes/`)
 
-- **File:** `dev-notes/session-YYYY-MM-DD.md`
-- **Primary Goal:** To create a human-readable log that captures the **"why"** behind key decisions made during a session. Design discussions and their outcomes should be the main focus.
-- **Secondary Goal:** To supplement these decisions with the **"how"** by logging relevant command-line transcripts for context, debugging, or reproducibility.
+- File: `dev-notes/session-YYYY-MM-DD.md`
+- Primary Goal: Capture the why behind key decisions made during a session. Design discussions and their outcomes are the main focus.
+- Secondary Goal: Supplement decisions with the how by logging relevant command-line transcripts for context, debugging, or reproducibility.
 
 ### Logging Format
 
-Entries in the session log should prioritize one of the following two formats, depending on the context.
+Entries should use one of the following formats, choosing the one that best fits the context.
 
 #### 1. Design Decision (Default)
 
-Use this format as the default way to record the outcome of discussions.
-
-- **Structure:**
+- Structure:
   ```markdown
-  - **Topic:** {Brief description of the feature or problem}
-    - **Decision:** A clear and concise summary of the final decision.
-    - **Rationale:** The core reasons *why* this decision was made. Explain the benefits and trade-offs.
-    - **Alternatives Considered (Optional):** Briefly mention other options that were discussed and why they were not chosen.
+  - Topic: {Brief description of the feature or problem}
+    - Decision: A clear and concise summary of the final decision.
+    - Rationale: The core reasons why this decision was made. Explain benefits and trade-offs.
+    - Alternatives Considered (Optional): Briefly mention other options and why they were not chosen.
   ```
 
 #### 2. Command Transcript (When Necessary)
 
-Use this format when the specific commands, their sequence, and their output are critical for understanding an action (e.g., troubleshooting, verifying a change).
-
-- **Structure:**
+- Use when specific commands, their sequence, and their output are critical (e.g., troubleshooting, verifying a change).
+- Structure:
   ```markdown
   - {Time HH:MM} Ran: `{command}`
     Output:
@@ -69,14 +66,16 @@ Use this format when the specific commands, their sequence, and their output are
   ```
 
 ### General Guidance
-- Prioritize logging **decisions** over raw transcripts. A log full of commands with no context is not useful.
-- Group related command transcripts under a single "Topic" or "Decision" entry when possible.
-- Keep outputs concise.
+- Prioritize logging decisions over raw transcripts; group related command transcripts under a single Topic/Decision when possible.
+- Keep outputs concise and redact sensitive info (tokens, secrets, private paths) if they appear.
+- At the start of work: create the session file with a short header (date, scope).
+- At the end: add a short summary (commits, tags, pushes, follow-ups).
+- Optional: If you also capture a full terminal log (`script`, `tee`, etc.), reference the file at the top and paste only key excerpts.
 
 ## Decision Safeguards (Strong Stop)
 - When a requested change is risky, ambiguous, or conflicts with this guide, the agent must issue a prominent HARD STOP warning with emojis and pause work until explicit confirmation.
 - Trigger examples:
-  - Ambiguity in requirements or library choice (e.g., sentence vs token segmentation)
+  - Ambiguity in requirements or library choice
   - Irreversible/destructive actions (history rewrites, large deletes)
   - Large refactors without tests or clear rollback
   - Security-sensitive or dependency changes without validation
@@ -87,17 +86,18 @@ Use this format when the specific commands, their sequence, and their output are
   - Request explicit approval keywords: APPROVE / ADJUST / SPLIT / SKIP.
   - Prefer incremental changes with minimal tests and/or feature flags.
   - Log the decision point and commands in `dev-notes/session-YYYY-MM-DD.md`.
-- Example warning:
-  
-  ```text
-  ⛔️ HARD STOP — Risky/ambiguous change detected
-  - Issue: Library mismatch (sentence vs token segmentation) could cause a broad revert.
-  - Risk: High scope + unclear intent; potential breakage across components.
-  - Proposal: Clarify target behavior, add a minimal test, then proceed incrementally.
-  Please reply with:
-  - APPROVE to proceed as-is,
-  - ADJUST with clarified constraints,
-  - SPLIT to stage into smaller PRs, or
-  - SKIP to avoid this change.
-  ```
-- Scope: Applies to the entire repository. More-nested AGENTS.md files may refine but not weaken these safeguards.
+  - Example warning:
+
+    ```text
+    ⛔️ HARD STOP — Risky/ambiguous change detected
+    - Issue: Potentially broad or unclear change could cause breakage.
+    - Risk: High scope + unclear intent; potential breakage across components.
+    - Proposal: Clarify target behavior, add a minimal test, then proceed incrementally.
+    Please reply with:
+    - APPROVE to proceed as-is,
+    - ADJUST with clarified constraints,
+    - SPLIT to stage into smaller PRs, or
+    - SKIP to avoid this change.
+    ```
+  - Scope: Applies to the entire repository. More-nested AGENTS.md files may refine but not weaken these safeguards.
+
