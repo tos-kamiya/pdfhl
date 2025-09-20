@@ -5,7 +5,7 @@
 **AIエージェント向けに設計されています** （codex や gemini-cli など）。
 `pdfhl` は、LLMによるワークフローの中でそのまま利用できるように作られており、エージェントが検索やハイライト処理を、 **ワークフローを乱さず** 実行できることを重視しています。
 
-もちろん手動でも `pdfhl` を実行できますが、主な目的は（学術論文の重要箇所のハイライトなど）エージェント主導の処理で信頼できる基盤を提供することです。
+もちろん手動でも `pdfhl-cli` を実行できますが、主な目的は（学術論文の重要箇所のハイライトなど）エージェント主導の処理で信頼できる基盤を提供することです。
 
 ## 概要
 
@@ -19,21 +19,21 @@
 
 ## インストール
 
-推奨: GitHub から pipx でインストールします。CLI を利用する場合は `[cli]` を付与してください。
+推奨: GitHub から pipx でインストールします。
 
 安定版タグ（v0.3.0）をインストール:
 
 ```bash
-pipx install "git+https://github.com/tos-kamiya/pdfhl@v0.3.0#egg=pdfhl[cli]"
+pipx install git+https://github.com/tos-kamiya/pdfhl@v0.3.0
 ```
 
 タグではなく最新の main ブランチを使う場合:
 
 ```bash
-pipx install --force "git+https://github.com/tos-kamiya/pdfhl#egg=pdfhl[cli]"
+pipx install --force git+https://github.com/tos-kamiya/pdfhl
 ```
 
-要件: Python 3.10+。`[cli]` を省略するとライブラリのみがインストールされ、`pdfhl` コマンドは作成されません。
+要件: Python 3.10+。上記コマンドでライブラリと `pdfhl-cli` 実行ファイルがインストールされます。
 
 既定でサブワード分割に `google/mt5-base` を使用します。Python パッケージ `transformers` と `sentencepiece` は依存関係として自動インストールされます。初回実行時に Hugging Face からトークナイザーをダウンロードし、キャッシュされたファイルは以後オフラインでも利用できます。環境変数 `PDFHL_MT5_MODEL` を設定すれば別のトークナイザーを使用可能です。
 
@@ -42,25 +42,25 @@ pipx install --force "git+https://github.com/tos-kamiya/pdfhl#egg=pdfhl[cli]"
 単一のフレーズをハイライトします。デフォルトでは、大文字と小文字を区別せず、最短のマッチを検索します。
 
 ```bash
-pdfhl input.pdf --text "Deep Learning" -o output.pdf
+pdfhl-cli input.pdf --text "Deep Learning" -o output.pdf
 ```
 
 フレーズのすべての出現箇所をハイライトします：
 
 ```bash
-pdfhl input.pdf --text "Deep Learning" --all-matches -o output.pdf
+pdfhl-cli input.pdf --text "Deep Learning" --all-matches -o output.pdf
 ```
 
 ハイライトのスタイルを設定し、ラベルを追加します：
 
 ```bash
-pdfhl input.pdf --text "evaluation metrics" --color "#FFEE00" --opacity 0.2 --label "Metrics" -o out.pdf
+pdfhl-cli input.pdf --text "evaluation metrics" --color "#FFEE00" --opacity 0.2 --label "Metrics" -o out.pdf
 ```
 
 JSONレシピを介して一度に複数のハイライトを適用します：
 
 ```bash
-pdfhl input.pdf --recipe recipe.json -o out.pdf
+pdfhl-cli input.pdf --recipe recipe.json -o out.pdf
 ```
 
 詳細は `examples/` を参照してください：
@@ -85,7 +85,7 @@ codex や gemini-cli にプロンプトを入力し、必要に応じてファ�
 3. それを codex や gemini-cli に貼り付けます。
 4. `pdftopages` は、あらかじめ `$PATH` の通ったディレクトリに置くか、プロンプト内でスクリプトへのフルパスを指定してください。
 
-このように、利用者は対話的に少し修正しながら実行するだけで、ページ分割からハイライト適用までの処理が LLM によって誘導されます。
+このように、利用者は対話的に少し修正しながら実行するだけで、ページ分割からハイライト適用までの処理が LLM によって誘導されます（`pdfhl-cli` を呼び出すステップを含む）。
 
 ### 色分け規則
 
@@ -103,7 +103,7 @@ codex や gemini-cli にプロンプトを入力し、必要に応じてファ�
 ## CLIリファレンス
 
 ```
-pdfhl PDF [--text TEXT | --recipe JSON] [options]
+pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
 ```
 
 **モード**

@@ -5,7 +5,7 @@ PDF text highlighter with progressive, tolerant phrase matching.
 **Designed for AI agents**  (such as codex or gemini-cli):
 `pdfhl` was created to be easily used inside LLM-driven workflows. The tool’s robust matching (progressive phrase matching, tolerant normalization) ensures that AI agents can highlight text reliably **without breaking their workflow**.
 
-While you can of course run `pdfhl` manually, its main purpose is to serve as a reliable building block, such as academic paper highlighting and other automated reading tasks.
+While you can of course run `pdfhl-cli` manually, its main purpose is to serve as a reliable building block, such as academic paper highlighting and other automated reading tasks.
 
 ## Overview
 
@@ -19,19 +19,19 @@ While you can of course run `pdfhl` manually, its main purpose is to serve as a 
 
 ## Installation
 
-Install via pipx from GitHub (recommended). Append `[cli]` to enable the command-line entry point:
+Install via pipx from GitHub (recommended):
 
 ```bash
-pipx install "git+https://github.com/tos-kamiya/pdfhl@v0.3.0#egg=pdfhl[cli]"
+pipx install git+https://github.com/tos-kamiya/pdfhl@v0.3.0
 ```
 
 To track the latest main branch instead of the tagged release:
 
 ```bash
-pipx install --force "git+https://github.com/tos-kamiya/pdfhl#egg=pdfhl[cli]"
+pipx install --force git+https://github.com/tos-kamiya/pdfhl
 ```
 
-Requires Python 3.10+. Without `[cli]`, the library installs without the `pdfhl` console script.
+Requires Python 3.10+. These commands install the `pdfhl-cli` executable alongside the importable library.
 
 `pdfhl` uses `google/mt5-base` for subword segmentation by default. The Python packages `transformers` and `sentencepiece` are declared as dependencies and install automatically. The first run downloads the tokenizer from Hugging Face; the cached copy is reused afterwards, so subsequent runs work offline. Advanced users can point to a different tokenizer via the `PDFHL_MT5_MODEL` environment variable.
 
@@ -40,25 +40,25 @@ Requires Python 3.10+. Without `[cli]`, the library installs without the `pdfhl`
 Highlight a single phrase. By default, finds the shortest match, ignoring case.
 
 ```bash
-pdfhl input.pdf --text "Deep Learning" -o output.pdf
+pdfhl-cli input.pdf --text "Deep Learning" -o output.pdf
 ```
 
 Highlight all occurrences of a phrase:
 
 ```bash
-pdfhl input.pdf --text "Deep Learning" --all-matches -o output.pdf
+pdfhl-cli input.pdf --text "Deep Learning" --all-matches -o output.pdf
 ```
 
 Style the highlight and add a label:
 
 ```bash
-pdfhl input.pdf --text "evaluation metrics" --color "#FFEE00" --opacity 0.2 --label "Metrics" -o out.pdf
+pdfhl-cli input.pdf --text "evaluation metrics" --color "#FFEE00" --opacity 0.2 --label "Metrics" -o out.pdf
 ```
 
 Apply multiple highlights in one pass via a JSON recipe:
 
 ```bash
-pdfhl input.pdf --recipe recipe.json -o out.pdf
+pdfhl-cli input.pdf --recipe recipe.json -o out.pdf
 ```
 
 See more in `examples/`:
@@ -83,7 +83,7 @@ Just paste the prompt into your LLM CLI (codex, gemini-cli, etc.), replace the f
 3. Paste it into codex or gemini-cli.
 4. Make sure `pdftopages` is either in a directory on your `$PATH`, **or** adjust the prompt to call it using its full path.
 
-This interactive style lets you “poke” the CLI with the prompt, tweak the filename or script path as needed, and let the LLM guide the process (splitting pages, finding important sentences, applying highlights with `pdfhl`). No additional scripting is required.
+This interactive style lets you “poke” the CLI with the prompt, tweak the filename or script path as needed, and let the LLM guide the process (splitting pages, finding important sentences, applying highlights with `pdfhl-cli`). No additional scripting is required.
 
 ### Color Convention
 
@@ -101,7 +101,7 @@ The provided prompt uses three colors:
 ## CLI Reference
 
 ```
-pdfhl PDF [--text TEXT | --recipe JSON] [options]
+pdfhl-cli PDF [--text TEXT | --recipe JSON] [options]
 ```
 
 **Mode**
