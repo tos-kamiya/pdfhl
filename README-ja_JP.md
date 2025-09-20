@@ -307,7 +307,7 @@ print(outcome.matches)
 | `progressive_kmax` | `int` | `3` | プログレッシブ検索での最大チャンク長。 |
 | `progressive_max_gap_chars` | `int` | `200` | セグメント間の許容ギャップ（文字数）。 |
 | `progressive_min_total_words` | `int` | `3` | プログレッシブ検索時に必要な最小サブワード数。 |
-| `progressive_select_shortest` | `bool` | `True` | ドキュメント全体で最もコンパクトなマッチを選択。`False` で全マッチ。 |
+| `progressive_select_shortest` | `bool | None` | `auto` | 省略時は `not allow_multiple` が適用されます。`True` で最短のみ、`False` で全マッチ。 |
 | `opacity` | `float` | `0.3` | ハイライトの不透明度 (0..1)。 |
 | `dry_run` | `bool` | `False` | アノテーションを適用せずマッチだけ確認（スタンドアロン関数の `dry_run` と同等）。 |
 | `page_filter` | `Callable[[PageInfo], bool] | None` | `None` | 検索対象のページを絞り込むフィルタ。 |

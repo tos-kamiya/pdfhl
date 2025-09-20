@@ -115,7 +115,7 @@ class PdfHighlighter:
         progressive_kmax: int = 3,
         progressive_max_gap_chars: int = 200,
         progressive_min_total_words: int = 3,
-        progressive_select_shortest: bool = True,
+        progressive_select_shortest: bool | None = None,
         opacity: float = 0.3,
         dry_run: bool = False,
         page_filter: Callable[[PageInfo], bool] | None = None,
@@ -128,6 +128,10 @@ class PdfHighlighter:
         color_rgb = _parse_color(color) if color is not None else _color_to_rgb("yellow")
         matches_by_page: Dict[int, List[Tuple[int, int]]] = {}
 
+        select_shortest = progressive_select_shortest
+        if select_shortest is None:
+            select_shortest = not allow_multiple
+
         if progressive:
             total, matches_by_page = _find_progressive_matches_by_page(
                 self._doc,
@@ -136,7 +140,7 @@ class PdfHighlighter:
                 ignore_case=ignore_case,
                 max_segment_gap_chars=progressive_max_gap_chars,
                 min_total_words=progressive_min_total_words,
-                select_shortest=progressive_select_shortest,
+                select_shortest=select_shortest,
                 page_filter=page_filter,
             )
         else:

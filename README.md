@@ -305,7 +305,7 @@ print(outcome.matches)
 | `progressive_kmax` | `int` | `3` | Maximum subword chunk size for progressive search. |
 | `progressive_max_gap_chars` | `int` | `200` | Max allowed character gap between progressive segments. |
 | `progressive_min_total_words` | `int` | `3` | Minimum matched subwords required when using progressive search. |
-| `progressive_select_shortest` | `bool` | `True` | Select global best match per query (`True`) or keep all ranges (`False`). |
+| `progressive_select_shortest` | `bool | None` | `auto` | If omitted, defaults to `not allow_multiple`; set explicitly to force shortest (`True`) or all (`False`). |
 | `opacity` | `float` | `0.3` | Highlight opacity (0..1). |
 | `dry_run` | `bool` | `False` | Inspect matches without applying annotations (same effect as the top-level flag on the free function). |
 | `page_filter` | `Callable[[PageInfo], bool] | None` | `None` | Optional filter to restrict search to specific pages. |
