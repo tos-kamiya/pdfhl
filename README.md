@@ -33,7 +33,7 @@ pipx install --force "git+https://github.com/tos-kamiya/pdfhl#egg=pdfhl[cli]"
 
 Requires Python 3.10+. Without `[cli]`, the library installs without the `pdfhl` console script.
 
-`pdfhl` uses `google/mt5-base` for subword segmentation by default. The Python packages `transformers` and `sentencepiece` are declared as dependencies and will be installed automatically. For offline environments, pre-download the model and pass `--mt5-model /path/to/mt5-base` (see below).
+`pdfhl` uses `google/mt5-base` for subword segmentation by default. The Python packages `transformers` and `sentencepiece` are declared as dependencies and install automatically. The first run downloads the tokenizer from Hugging Face; the cached copy is reused afterwards, so subsequent runs work offline. Advanced users can point to a different tokenizer via the `PDFHL_MT5_MODEL` environment variable.
 
 ## Quick Start
 
@@ -128,15 +128,10 @@ pdfhl PDF [--text TEXT | --recipe JSON] [options]
 - `--report json`
   - Emit a JSON report to stdout.
 
-**Segmentation (mt5) Options**
-- `--mt5-model PATH_OR_ID`
-  - mt5 tokenizer model path or hub ID. Default: `google/mt5-base`. Can also set env `PDFHL_MT5_MODEL`.
-- `--no-mt5`
-  - Disable mt5-based segmentation. Fallback uses a simple whitespace split. You can also set env `PDFHL_USE_MT5=0`.
-
 Notes
 - By default, queries are segmented into mt5 subwords and then matched with `\s*` between subwords to tolerate missing spaces/line breaks.
 - Minimum coverage is 3 subwords; tune chunking via `progressive_kmax` (default 3) in recipes.
+- First run requires network access to download `google/mt5-base`; cached copies are reused afterwards.
 
 **Output Policy**
 - The input PDF is never modified. The tool refuses to overwrite the input path; specify a different `-o/--output`.
@@ -345,12 +340,6 @@ pytest -q
 Notes
 - Tests focus on pure logic and do not require PyMuPDF or transformers. You may see harmless warnings if those libraries are not installed.
 - If you prefer, you can run without activating the venv by using the full path, e.g. `.venv/bin/pytest -q`.
-
-For offline use of mt5, pre-download the model directory (e.g., with `transformers-cli` or by copying from a machine with cache) and run:
-
-```bash
-pdfhl input.pdf --text "..." --mt5-model /path/to/google/mt5-base
-```
 
 ## License
 

@@ -35,7 +35,7 @@ pipx install --force "git+https://github.com/tos-kamiya/pdfhl#egg=pdfhl[cli]"
 
 要件: Python 3.10+。`[cli]` を省略するとライブラリのみがインストールされ、`pdfhl` コマンドは作成されません。
 
-既定でサブワード分割に `google/mt5-base` を使用します。Python パッケージ `transformers` と `sentencepiece` は依存関係として自動インストールされます。オフライン環境では、あらかじめモデルを取得してローカルパスを `--mt5-model /path/to/mt5-base` で指定してください（後述）。
+既定でサブワード分割に `google/mt5-base` を使用します。Python パッケージ `transformers` と `sentencepiece` は依存関係として自動インストールされます。初回実行時に Hugging Face からトークナイザーをダウンロードし、キャッシュされたファイルは以後オフラインでも利用できます。環境変数 `PDFHL_MT5_MODEL` を設定すれば別のトークナイザーを使用可能です。
 
 ## クイックスタート
 
@@ -130,15 +130,10 @@ pdfhl PDF [--text TEXT | --recipe JSON] [options]
 - `--report json`
   - JSONレポートを標準出力に出力します。
 
-**分割（mt5）オプション**
-- `--mt5-model PATH_OR_ID`
-  - mt5 トークナイザーのモデルパスまたはHubのID。デフォルトは `google/mt5-base`。環境変数 `PDFHL_MT5_MODEL` でも指定可能。
-- `--no-mt5`
-  - mt5 による分割を無効化します。フォールバックとして単純なホワイトスペース分割を使用します。`PDFHL_USE_MT5=0` でも無効化可能。
-
 注記
 - 既定ではクエリは mt5 サブワードに分割され、サブワード間は `\s*` でマッチします（改行・空白欠落に寛容）。
 - 最少カバレッジは 3 サブワードです。レシピでは `progressive_kmax`（既定 3）でチャンク長を調整できます。
+- 初回実行時のみ `google/mt5-base` のダウンロードにネットワーク接続が必要です。キャッシュされた後はオフラインでも利用できます。
 
 **出力ポリシー**
 - 入力PDFは変更されません。このツールは入力パスへの上書きを拒否します。異なる `-o/--output` を指定してください。
@@ -347,12 +342,6 @@ pytest -q
 注記
 - テストは純粋ロジック中心で、PyMuPDF や transformers が未インストールでも動作します。未インストール時の警告は無害です。
 - 仮想環境をアクティベートせず、フルパス指定（例: `.venv/bin/pytest -q`）でも実行できます。
-
-オフラインで mt5 を使う場合は、モデルディレクトリを事前に用意し（キャッシュをコピー等）、次のように指定してください：
-
-```bash
-pdfhl input.pdf --text "..." --mt5-model /path/to/google/mt5-base
-```
 
 ## ライセンス
 

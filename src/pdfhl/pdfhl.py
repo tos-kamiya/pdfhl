@@ -1151,10 +1151,6 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     p.add_argument("--opacity", type=float, default=0.3, help="Highlight opacity (0..1)")
     p.add_argument("--report", choices=["json"], help="Emit report to stdout (json)")
 
-    # mt5 segmentation controls
-    p.add_argument("--mt5-model", type=str, default=None, help="mt5 tokenizer model id or local path (default: google/mt5-base)")
-    p.add_argument("--no-mt5", action="store_true", help="Disable mt5-based segmentation (fallback to single-token)")
-
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     return p.parse_args(argv)
@@ -1175,14 +1171,6 @@ def _color_to_rgb(name: str) -> Tuple[float, float, float]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     ns = _parse_args(sys.argv[1:] if argv is None else argv)
-    # Configure segmenter based on CLI
-    try:
-        from .segmentation import configure_segmenter
-
-        configure_segmenter(use_mt5=(not getattr(ns, "no_mt5", False)), model_id=getattr(ns, "mt5_model", None))
-    except Exception:
-        # If segmentation module cannot be configured, proceed; runtime will warn/fallback as needed
-        pass
     # Recipe mode
     if getattr(ns, "recipe", None):
         try:
